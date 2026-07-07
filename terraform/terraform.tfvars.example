@@ -4,7 +4,7 @@
 # this repo's canonical home (use your own fork if you change the DAGs).
 dags_repo_url = "https://github.com/elveli/eks-airflow-kubeflow-demo.git"
 
-# region       = "us-east-1"
+# region       = "us-west-2"
 # project_name = "afkf-demo"
 
 # Keep this current! Old versions fall into EKS "extended support" at

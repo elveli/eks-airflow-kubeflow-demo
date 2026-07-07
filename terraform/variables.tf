@@ -10,9 +10,9 @@ variable "project_name" {
 }
 
 variable "region" {
-  description = "AWS region. us-east-1 is the cheapest US region for this stack; pick whatever is closest to you — the spot-price spread is pennies/day."
+  description = "AWS region. us-west-2 (Oregon): cheapest-tier US pricing AND low latency from the US West Coast. The spot-price spread between regions is pennies/day — pick whatever is closest to you."
   type        = string
-  default     = "us-east-1"
+  default     = "us-west-2"
 }
 
 variable "cluster_version" {

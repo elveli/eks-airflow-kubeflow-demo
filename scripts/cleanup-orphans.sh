@@ -22,7 +22,7 @@ DELETE=false
 
 TF="terraform -chdir=terraform"
 CLUSTER="${CLUSTER_NAME:-$($TF output -raw cluster_name 2>/dev/null || echo afkf-demo-eks)}"
-REGION="${AWS_REGION:-$($TF output -raw region 2>/dev/null || echo us-east-1)}"
+REGION="${AWS_REGION:-$($TF output -raw region 2>/dev/null || echo us-west-2)}"
 TAG="kubernetes.io/cluster/${CLUSTER}"
 FOUND=0
 

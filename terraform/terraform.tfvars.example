@@ -1,8 +1,8 @@
 # Copy to terraform.tfvars and edit.
 
 # REQUIRED: public git repo that Airflow's git-sync pulls DAGs from —
-# push this repo to GitHub and put its HTTPS URL here.
-dags_repo_url = "https://github.com/<your-user>/eks-airflow-kubeflow-demo.git"
+# this repo's canonical home (use your own fork if you change the DAGs).
+dags_repo_url = "https://github.com/elveli/eks-airflow-kubeflow-demo.git"
 
 # region       = "eu-north-1"
 # project_name = "afkf-demo"

@@ -59,7 +59,7 @@ later → a final Airflow task lists the artifacts in S3.
 ## 💸 Cost estimate
 
 On-demand baselines: t3.large ≈ $0.083/h, t3.xlarge ≈ $0.166/h; SPOT is
-typically 60–70 % off. Numbers below assume eu-north-1 and will drift — treat
+typically 60–70 % off. Numbers below assume us-east-1 and will drift — treat
 as ±30 %.
 
 | Component | Qty (steady state) | ~$/hour | ~$/day |
@@ -191,7 +191,7 @@ This is deliberately **more than** `terraform destroy`, in this order:
 | Orphaned ENIs / EIPs | VPC teardown races | rare; NAT EIP is Terraform-managed | destroy retries; orphan script lists SGs |
 
 `./scripts/cleanup-orphans.sh` is a **dry-run report** (also runnable anytime,
-even months later, via `CLUSTER_NAME=afkf-demo-eks AWS_REGION=eu-north-1 ./scripts/cleanup-orphans.sh`);
+even months later, via `CLUSTER_NAME=afkf-demo-eks AWS_REGION=us-east-1 ./scripts/cleanup-orphans.sh`);
 add `--delete` to remove what it finds.
 
 ---

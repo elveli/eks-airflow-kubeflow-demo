@@ -46,7 +46,7 @@ terraform {
   # backend "s3" {
   #   bucket       = "<your-tf-state-bucket>"   # create manually first
   #   key          = "eks-airflow-kubeflow-demo/terraform.tfstate"
-  #   region       = "eu-north-1"
+  #   region       = "us-east-1"
   #   use_lockfile = true                       # S3-native locking, TF >= 1.10
   # }
   #

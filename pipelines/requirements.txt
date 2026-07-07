@@ -1,0 +1,4 @@
+# Compile-time only (the compiled YAML is committed; the cluster never needs these).
+# kfp is also what the Airflow DAG installs in its task virtualenv — keep versions aligned.
+kfp==2.7.0
+kfp-kubernetes==1.2.0

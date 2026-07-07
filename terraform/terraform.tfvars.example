@@ -1,0 +1,18 @@
+# Copy to terraform.tfvars and edit.
+
+# REQUIRED: public git repo that Airflow's git-sync pulls DAGs from —
+# push this repo to GitHub and put its HTTPS URL here.
+dags_repo_url = "https://github.com/<your-user>/eks-airflow-kubeflow-demo.git"
+
+# region       = "eu-north-1"
+# project_name = "afkf-demo"
+
+# Keep this current! Old versions fall into EKS "extended support" at
+# $0.60/h instead of $0.10/h.
+# cluster_version = "1.33"
+
+# Set true for private subnets + a single NAT gateway (+~$0.045/h + data).
+# enable_nat = false
+
+# Restrict the public API endpoint to your own IP if you want:
+# api_allowed_cidrs = ["203.0.113.7/32"]

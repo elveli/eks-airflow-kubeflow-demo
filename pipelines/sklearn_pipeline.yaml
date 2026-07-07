@@ -1,0 +1,248 @@
+# PIPELINE DEFINITION
+# Name: sklearn-iris-demo
+# Description: Train/evaluate a RandomForest on iris and publish the model to S3
+# Inputs:
+#    accuracy_threshold: float [Default: 0.85]
+#    n_estimators: int [Default: 150.0]
+#    s3_bucket: str
+#    s3_prefix: str [Default: 'kfp-artifacts']
+# Outputs:
+#    evaluate-and-publish-metrics: system.Metrics
+components:
+  comp-evaluate-and-publish:
+    executorLabel: exec-evaluate-and-publish
+    inputDefinitions:
+      artifacts:
+        model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+        test_data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+      parameters:
+        accuracy_threshold:
+          parameterType: NUMBER_DOUBLE
+        s3_bucket:
+          parameterType: STRING
+        s3_prefix:
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        metrics:
+          artifactType:
+            schemaTitle: system.Metrics
+            schemaVersion: 0.0.1
+      parameters:
+        Output:
+          parameterType: STRING
+  comp-train:
+    executorLabel: exec-train
+    inputDefinitions:
+      parameters:
+        n_estimators:
+          parameterType: NUMBER_INTEGER
+    outputDefinitions:
+      artifacts:
+        model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+        test_data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+deploymentSpec:
+  executors:
+    exec-evaluate-and-publish:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - evaluate_and_publish
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.7.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'scikit-learn==1.4.2'\
+          \ 'joblib==1.4.2' 'boto3==1.34.100' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef evaluate_and_publish(\n    model: Input[Model],\n    test_data:\
+          \ Input[Dataset],\n    s3_bucket: str,\n    s3_prefix: str,\n    accuracy_threshold:\
+          \ float,\n    metrics: Output[Metrics],\n) -> str:\n    \"\"\"Score the\
+          \ model on held-out data; publish to S3 if it clears the bar.\"\"\"\n  \
+          \  import json\n    from datetime import datetime, timezone\n\n    import\
+          \ boto3\n    import joblib\n    from sklearn.metrics import accuracy_score\n\
+          \n    clf = joblib.load(model.path)\n    with open(test_data.path) as f:\n\
+          \        data = json.load(f)\n\n    accuracy = float(accuracy_score(data[\"\
+          y\"], clf.predict(data[\"X\"])))\n    metrics.log_metric(\"accuracy\", accuracy)\n\
+          \    print(f\"Held-out accuracy: {accuracy:.4f} (threshold {accuracy_threshold})\"\
+          )\n\n    if accuracy < accuracy_threshold:\n        raise ValueError(f\"\
+          Model rejected: accuracy {accuracy:.4f} < {accuracy_threshold}\")\n\n  \
+          \  # Credentials come from IRSA on the pipeline-runner service account.\n\
+          \    stamp = datetime.now(timezone.utc).strftime(\"%Y%m%d-%H%M%S\")\n  \
+          \  s3 = boto3.client(\"s3\")\n    model_key = f\"{s3_prefix}/{stamp}/model.joblib\"\
+          \n    s3.upload_file(model.path, s3_bucket, model_key)\n    s3.put_object(\n\
+          \        Bucket=s3_bucket,\n        Key=f\"{s3_prefix}/{stamp}/metrics.json\"\
+          ,\n        Body=json.dumps({\"accuracy\": accuracy, \"published_at\": stamp}).encode(),\n\
+          \        ContentType=\"application/json\",\n    )\n\n    model_uri = f\"\
+          s3://{s3_bucket}/{model_key}\"\n    print(f\"Published {model_uri}\")\n\
+          \    return model_uri\n\n"
+        image: python:3.11-slim
+        resources:
+          cpuRequest: 1.0
+          memoryRequest: 2.147483648
+    exec-train:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - train
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.7.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'scikit-learn==1.4.2'\
+          \ 'joblib==1.4.2' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef train(\n    n_estimators: int,\n    model: Output[Model],\n \
+          \   test_data: Output[Dataset],\n):\n    \"\"\"Train a RandomForest on iris;\
+          \ emit the model and a held-out test set.\"\"\"\n    import json\n\n   \
+          \ import joblib\n    from sklearn.datasets import load_iris\n    from sklearn.ensemble\
+          \ import RandomForestClassifier\n    from sklearn.model_selection import\
+          \ train_test_split\n\n    X, y = load_iris(return_X_y=True)\n    X_train,\
+          \ X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42)\n\
+          \n    clf = RandomForestClassifier(n_estimators=n_estimators, random_state=42)\n\
+          \    clf.fit(X_train, y_train)\n    print(f\"Trained RandomForest({n_estimators=})\
+          \ on {len(X_train)} samples\")\n\n    joblib.dump(clf, model.path)\n   \
+          \ with open(test_data.path, \"w\") as f:\n        json.dump({\"X\": X_test.tolist(),\
+          \ \"y\": y_test.tolist()}, f)\n\n"
+        image: python:3.11-slim
+        resources:
+          cpuRequest: 1.0
+          memoryRequest: 2.147483648
+pipelineInfo:
+  description: Train/evaluate a RandomForest on iris and publish the model to S3
+  name: sklearn-iris-demo
+root:
+  dag:
+    outputs:
+      artifacts:
+        evaluate-and-publish-metrics:
+          artifactSelectors:
+          - outputArtifactKey: metrics
+            producerSubtask: evaluate-and-publish
+    tasks:
+      evaluate-and-publish:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-evaluate-and-publish
+        dependentTasks:
+        - train
+        inputs:
+          artifacts:
+            model:
+              taskOutputArtifact:
+                outputArtifactKey: model
+                producerTask: train
+            test_data:
+              taskOutputArtifact:
+                outputArtifactKey: test_data
+                producerTask: train
+          parameters:
+            accuracy_threshold:
+              componentInputParameter: accuracy_threshold
+            s3_bucket:
+              componentInputParameter: s3_bucket
+            s3_prefix:
+              componentInputParameter: s3_prefix
+        taskInfo:
+          name: evaluate-and-publish
+      train:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-train
+        inputs:
+          parameters:
+            n_estimators:
+              componentInputParameter: n_estimators
+        taskInfo:
+          name: train
+  inputDefinitions:
+    parameters:
+      accuracy_threshold:
+        defaultValue: 0.85
+        isOptional: true
+        parameterType: NUMBER_DOUBLE
+      n_estimators:
+        defaultValue: 150.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      s3_bucket:
+        parameterType: STRING
+      s3_prefix:
+        defaultValue: kfp-artifacts
+        isOptional: true
+        parameterType: STRING
+  outputDefinitions:
+    artifacts:
+      evaluate-and-publish-metrics:
+        artifactType:
+          schemaTitle: system.Metrics
+          schemaVersion: 0.0.1
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.7.0
+---
+platforms:
+  kubernetes:
+    deploymentSpec:
+      executors:
+        exec-evaluate-and-publish:
+          nodeSelector:
+            labels:
+              workload: pipelines
+          tolerations:
+          - effect: NoSchedule
+            key: workload
+            operator: Equal
+            value: pipelines
+        exec-train:
+          nodeSelector:
+            labels:
+              workload: pipelines
+          tolerations:
+          - effect: NoSchedule
+            key: workload
+            operator: Equal
+            value: pipelines

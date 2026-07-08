@@ -473,6 +473,11 @@ before exposing anything.
   many `gcr.io/ml-pipeline` tags, so KFP ≤ 2.5 manifests reference images
   that now 404 (their minio tag, for one). `deploy-kfp.sh` pins 2.16.1, which
   pulls from ghcr.io / Docker Hub / quay.io instead.
+* **KFP's result-cache is disabled on purpose.** Its `cache-deployer` mints a
+  webhook TLS cert via the Kubernetes CSR API, which EKS's signer refuses for
+  non-node identities — it crashloops forever. `deploy-kfp.sh` scales the two
+  cache components to zero; harmless here since the sample DAG submits runs
+  with `enable_caching=False` anyway.
 * **Chart RBAC must match the autoscaler image.** The cluster-autoscaler Helm
   chart ships the ClusterRole; an old chart with a new image (≥ 1.33 needs
   `volumeattachments` list/watch) leaves the autoscaler silently unable to

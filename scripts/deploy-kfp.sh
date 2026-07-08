@@ -30,6 +30,15 @@ echo ">>> Annotating pipeline-runner SA with IRSA role (S3 access for pipeline p
 kubectl -n kubeflow annotate serviceaccount pipeline-runner \
   "eks.amazonaws.com/role-arn=${ROLE_ARN}" --overwrite
 
+# KFP's result-cache can't start on EKS: cache-deployer mints its webhook TLS
+# cert through the Kubernetes CSR API, and EKS's signer refuses non-node
+# certificates — the deployer crashloops and cache-server waits forever for a
+# secret that never appears. Caching is optional (the sample DAG submits with
+# enable_caching=False anyway), so run without it.
+echo ">>> Disabling KFP result-cache (its CSR cert flow is incompatible with EKS)"
+kubectl -n kubeflow scale deploy cache-deployer-deployment cache-server --replicas=0
+kubectl delete csr cache-server.kubeflow --ignore-not-found
+
 echo ">>> Waiting for ALL KFP deployments (first image pulls take several minutes)"
 for d in $(kubectl -n kubeflow get deploy -o name); do
   kubectl -n kubeflow rollout status "$d" --timeout=900s

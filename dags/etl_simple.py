@@ -1,4 +1,4 @@
-"""Sample DAG 1 — a minimal ETL.
+"""Sample DAG 1 — a minimal ETL. Dummy edit here to trigger Airflow event.
 
 extract → transform → load, ending with a JSON summary written to
 s3://$DEMO_S3_BUCKET/etl/<ds>/summary.json.

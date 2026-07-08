@@ -33,6 +33,7 @@ group for ML workloads, and a kill switch that parks the whole cluster at
   - [Container images: what gets pulled, and from where](#container-images-what-gets-pulled-and-from-where)
   - [Manual steps, called out honestly](#manual-steps-called-out-honestly)
   - [Inspecting the Helm releases from the CLI](#inspecting-the-helm-releases-from-the-cli)
+  - [What a healthy system looks like](#what-a-healthy-system-looks-like)
 - [🔴 Cost kill switch (park it, don't destroy it)](#-cost-kill-switch-park-it-dont-destroy-it)
 - [Teardown](#teardown)
   - [Resources that can leak and keep billing](#resources-that-can-leak-and-keep-billing)
@@ -404,6 +405,72 @@ To browse a chart's *available* settings before changing the values template:
 helm show values airflow --repo https://airflow.apache.org --version 1.16.0 | less
 helm show values aws-load-balancer-controller --repo https://aws.github.io/eks-charts --version 1.8.1
 ```
+
+### What a healthy system looks like
+
+Real `kubectl get pods -A` output from a working deployment (2 general nodes,
+a few pipeline runs done), for comparing against your own install:
+
+```
+NAMESPACE     NAME                                                         READY   STATUS      RESTARTS      AGE
+airflow       airflow-postgresql-0                                         1/1     Running     0             79m
+airflow       airflow-scheduler-68754498f7-5jp67                           3/3     Running     0             80m
+airflow       airflow-webserver-59697545dc-wc2sk                           1/1     Running     1 (77m ago)   80m
+kube-system   aws-load-balancer-controller-c76568c54-98hkv                 1/1     Running     0             80m
+kube-system   aws-node-fb4f2                                               2/2     Running     0             79m
+kube-system   aws-node-ktlxs                                               2/2     Running     0             90m
+kube-system   cluster-autoscaler-aws-cluster-autoscaler-7b875f97f-9n9gr    1/1     Running     0             84m
+kube-system   coredns-7c8cff8c-q4txj                                       1/1     Running     0             80m
+kube-system   coredns-7c8cff8c-qsthq                                       1/1     Running     0             79m
+kube-system   ebs-csi-controller-6c4b985d89-697tx                          6/6     Running     0             80m
+kube-system   ebs-csi-controller-6c4b985d89-6tm45                          6/6     Running     0             79m
+kube-system   ebs-csi-node-75w97                                           3/3     Running     0             90m
+kube-system   ebs-csi-node-sdjbc                                           3/3     Running     0             79m
+kube-system   kube-proxy-j5pbw                                             1/1     Running     0             90m
+kube-system   kube-proxy-tmbjc                                             1/1     Running     0             79m
+kube-system   metrics-server-59b569559b-2h7dj                              1/1     Running     0             80m
+kubeflow      metadata-envoy-deployment-8588c4bd58-cmx8h                   1/1     Running     0             68m
+kubeflow      metadata-grpc-deployment-7db7b94655-8sds7                    1/1     Running     4 (67m ago)   68m
+kubeflow      metadata-writer-84bcf8554f-trq97                             1/1     Running     0             68m
+kubeflow      ml-pipeline-7b466cb948-5xhx5                                 1/1     Running     1 (66m ago)   68m
+kubeflow      ml-pipeline-persistenceagent-dc6b65b4f-x9bjq                 1/1     Running     0             68m
+kubeflow      ml-pipeline-scheduledworkflow-84d5c9f555-zhwnx               1/1     Running     2 (65m ago)   68m
+kubeflow      ml-pipeline-ui-5858fccc6b-nkdrm                              1/1     Running     0             68m
+kubeflow      ml-pipeline-viewer-crd-74ff7b49d9-fvnbd                      1/1     Running     0             68m
+kubeflow      ml-pipeline-visualizationserver-5fb6b5ccbf-hfd4c             1/1     Running     0             68m
+kubeflow      mysql-7c486d86f9-g42gp                                       1/1     Running     0             68m
+kubeflow      seaweedfs-758595c5d6-4pgc4                                   1/1     Running     0             68m
+kubeflow      sklearn-iris-demo-84rz2-system-container-driver-2334247982   0/2     Completed   0             17m
+kubeflow      sklearn-iris-demo-84rz2-system-dag-driver-1178736439         0/2     Completed   0             19m
+kubeflow      workflow-controller-567d789d94-2x4s4                         1/1     Running     0             68m
+```
+
+How to read it:
+
+* **airflow** — the whole Airflow footprint is just three pods: bundled
+  Postgres, the scheduler (`3/3` = scheduler + git-sync + log-groomer
+  containers), and the webserver. During a DAG run you'd also see short-lived
+  task pods (`etl-simple-…`, `train-on-kubeflow-…`) that vanish when the task
+  ends. A restart or two on the webserver is normal (slow first boot on small
+  spot nodes).
+* **kube-system** — `aws-node` (VPC CNI), `kube-proxy` and `ebs-csi-node` are
+  DaemonSets: one copy per node, so with 2 nodes you see each twice; when the
+  pipelines node scales up, a third copy of each appears. The rest is the
+  addons this repo installs: ALB controller (1 replica), cluster-autoscaler,
+  metrics-server, and the EBS CSI controller (2 replicas is that addon's
+  default).
+* **kubeflow** — the KFP control plane (`ml-pipeline*`, `metadata-*`,
+  `workflow-controller`) plus its two backing stores: `mysql` (run history)
+  and `seaweedfs` (internal artifacts). The `sklearn-iris-demo-*  Completed`
+  pods are leftovers from pipeline runs — KFP v2 "driver" pods, tiny
+  bookkeeping containers that plan each run; the actual executor pods are
+  garbage-collected minutes after the run, the Completed drivers linger
+  harmlessly for a while longer. `cache-deployer`/`cache-server` are absent
+  by design (scaled to 0 — see gotchas).
+* **What's *not* there** — no pods on the `pipelines` node group: it's back
+  at zero. During a run you'd briefly see the `train`/`evaluate-and-publish`
+  executor pods here plus a third `aws-node`/`kube-proxy`/`ebs-csi-node` set
+  on the new node.
 
 ---
 

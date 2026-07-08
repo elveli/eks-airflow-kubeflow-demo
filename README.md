@@ -191,7 +191,7 @@ Repeat runs skip the node wait and image pulls and finish in ~3–4 minutes.
 In a couple of terminals while the run is going:
 
 ```bash
-kubectl get nodes -w                 # a 4th node appears (workload=pipelines), then vanishes ~2 min after the run
+kubectl get nodes -w                 # an extra node appears (workload=pipelines), then vanishes ~2 min after the run
 kubectl -n kubeflow get pods -w      # the train / evaluate executor pods come and go
 ```
 

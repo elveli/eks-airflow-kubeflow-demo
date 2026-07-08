@@ -163,11 +163,49 @@ cd .. && ./scripts/deploy-kfp.sh
 
 Or with make: `make deploy` then `make pf`.
 
-**Run the demo:** in the Airflow UI, unpause and trigger `etl_simple` (quick
-S3-write smoke test), then `train_on_kubeflow`. The first KFP run takes
-~10 min: pip-installing the KFP SDK in the task virtualenv, scaling a spot
-t3.xlarge from zero, and pulling images all happen on first use. Watch the
-run live in the KFP UI, and `kubectl get nodes -w` to see the scale-out.
+### Run the demo
+
+**Step 1 — smoke test with the ETL DAG (~1 min).**
+Open the Airflow UI at http://localhost:8080 (admin / admin). On the DAGs
+page, find `etl_simple`, click its pause toggle to unpause it, then press the
+▶ (Trigger) button. Within a minute all three tasks should turn dark green
+(success). This proves the basics work: Airflow can launch task pods, and
+those pods can write to S3 without any credentials (IRSA). Verify the output
+landed:
+
+```bash
+aws s3 ls --recursive "s3://$(terraform -chdir=terraform output -raw s3_bucket)/etl/"
+```
+
+**Step 2 — the main event: trigger `train_on_kubeflow`.**
+Unpause and trigger it the same way. Expect the **first run to take ~10
+minutes**, because three one-time things happen back to back:
+
+1. the Airflow task pod pip-installs the KFP SDK into a throwaway virtualenv (~2 min),
+2. the cluster autoscaler boots a spot t3.xlarge **from zero** for the pipeline pods (~3 min),
+3. the pipeline container images are pulled for the first time (~2 min).
+
+Repeat runs skip the node wait and image pulls and finish in ~3–4 minutes.
+
+**Step 3 — watch it happen (optional but the whole point of a demo).**
+In a couple of terminals while the run is going:
+
+```bash
+kubectl get nodes -w                 # a 4th node appears (workload=pipelines), then vanishes ~2 min after the run
+kubectl -n kubeflow get pods -w      # the train / evaluate executor pods come and go
+```
+
+And in the KFP UI at http://localhost:8081 → *Runs* → the newest
+`airflow-triggered-*` run shows the live pipeline graph with per-step logs.
+
+**Step 4 — confirm the result.**
+The Airflow run goes green once the pipeline succeeds and the final task has
+verified the artifacts; the trained model is now in S3:
+
+```bash
+aws s3 ls --recursive "s3://$(terraform -chdir=terraform output -raw s3_bucket)/kfp-artifacts/"
+# → .../<timestamp>/model.joblib  and  .../<timestamp>/metrics.json
+```
 
 If `terraform apply` ever fails with a Kubernetes-provider connection error
 (rare bootstrap race), run it in two phases:

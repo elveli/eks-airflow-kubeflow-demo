@@ -123,6 +123,17 @@ resource "helm_release" "alb_controller" {
     name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
     value = var.alb_controller_role_arn
   }
+
+  set {
+    # This webhook intercepts EVERY Service creation cluster-wide with
+    # failurePolicy=Fail, so any Service created before the controller pod is
+    # Ready errors out ("no endpoints available") — a race that breaks the
+    # parallel install of the other addons. Its only purpose is to make this
+    # controller the default for new LoadBalancer Services, and this demo
+    # creates none, so switch it off.
+    name  = "enableServiceMutatorWebhook"
+    value = "false"
+  }
 }
 
 # --- Cluster autoscaler -----------------------------------------------------------

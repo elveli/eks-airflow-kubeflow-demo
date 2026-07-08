@@ -34,6 +34,7 @@ group for ML workloads, and a kill switch that parks the whole cluster at
   - [Manual steps, called out honestly](#manual-steps-called-out-honestly)
   - [Inspecting the Helm releases from the CLI](#inspecting-the-helm-releases-from-the-cli)
   - [What a healthy system looks like](#what-a-healthy-system-looks-like)
+  - [Sidecars: why READY says 3/3](#sidecars-why-ready-says-33)
 - [🔴 Cost kill switch (park it, don't destroy it)](#-cost-kill-switch-park-it-dont-destroy-it)
 - [Teardown](#teardown)
   - [Resources that can leak and keep billing](#resources-that-can-leak-and-keep-billing)
@@ -507,6 +508,57 @@ How to read it:
   at zero. During a run you'd briefly see the `train`/`evaluate-and-publish`
   executor pods here plus a third `aws-node`/`kube-proxy`/`ebs-csi-node` set
   on the new node.
+
+### Sidecars: why READY says 3/3
+
+Sidecars aren't pods — they're extra containers *inside* a pod, which is what
+`3/3` on the scheduler means. To see every pod's containers:
+
+```bash
+kubectl get pods -A -o custom-columns='NS:.metadata.namespace,POD:.metadata.name,CONTAINERS:.spec.containers[*].name'
+```
+
+Or only the pods that actually have companions, init containers included:
+
+```bash
+kubectl get pods -A -o json | jq -r '.items[]
+  | select(((.spec.containers | length) + ((.spec.initContainers // []) | length)) > 1)
+  | .metadata.namespace + "/" + .metadata.name + "\n   containers: " + ([.spec.containers[].name] | join(", "))
+  + (if .spec.initContainers then "\n   init:       " + ([.spec.initContainers[].name] | join(", ")) else "" end)'
+```
+
+Real output from this stack (abridged):
+
+```
+airflow/airflow-scheduler-…
+   containers: scheduler, git-sync, scheduler-log-groomer
+   init:       wait-for-airflow-migrations, git-sync-init
+kube-system/aws-node-…
+   containers: aws-node, aws-eks-nodeagent
+   init:       aws-vpc-cni-init
+kube-system/ebs-csi-controller-…
+   containers: ebs-plugin, csi-provisioner, csi-attacher, csi-snapshotter, csi-resizer, liveness-probe
+kube-system/ebs-csi-node-…
+   containers: ebs-plugin, node-driver-registrar, liveness-probe
+kubeflow/sklearn-iris-demo-…-driver-…
+   containers: wait, main
+   init:       init
+```
+
+A short tour of the pattern: the Airflow scheduler carries `git-sync`
+(continuous DAG pulls) and a log groomer; the EBS CSI controller is one real
+driver (`ebs-plugin`) plus five standard CSI sidecars that each handle one
+storage verb (provision/attach/snapshot/resize/probe); Argo pairs your `main`
+container with a `wait` sidecar for completion + artifact bookkeeping.
+
+Handy to know:
+
+* A container's name is what `-c` targets everywhere:
+  `kubectl logs <pod> -c git-sync`, `kubectl exec <pod> -c scheduler -- env`.
+* The command counts `initContainers` on purpose: init containers are the
+  run-before cousins of sidecars — and since Kubernetes 1.28, *native*
+  sidecars are implemented as init containers with `restartPolicy: Always`,
+  so a chart's git-sync may live in either list.
 
 ---
 

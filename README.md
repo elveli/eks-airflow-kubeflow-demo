@@ -103,6 +103,34 @@ repo's `dags/` folder. Push a change to `main` and it shows up in the UI
 within a minute — that's also why this repo must be reachable (public) from
 the cluster.
 
+#### git-sync, demystified — do I ever need to push?
+
+**No push is ever required to *run* anything.** git-sync answers one question
+only: *"what code does Airflow have?"* — it has nothing to do with *when*
+that code runs. Keep the two ideas separate:
+
+| Act | What it affects | How |
+|---|---|---|
+| **git push** to this repo | Which DAG **code** Airflow has (≤60 s later) | Edit `dags/*.py`, commit, push — that's the whole "deploy" |
+| **Trigger** a DAG | Whether a **run** happens | ▶ in the UI, `airflow dags trigger`, or a `schedule=` in the DAG file |
+
+The mechanics: git-sync is a tiny sidecar container in the scheduler pod that
+just runs `git pull` in a loop, every 60 seconds, forever. It's a **pull
+model** — no webhooks, nothing on GitHub's side, no reaction *to* your push;
+the cluster simply notices the new commit at the next poll. Pushing never
+starts a DAG run, and triggering a DAG never touches git.
+
+So for this demo: the repo already contains both DAGs and the compiled
+pipeline, so **zero pushes are needed** — deploy, open the UI, trigger. You
+only push when you *change* something (edit a DAG, recompile the pipeline
+YAML), and the push replaces rebuilding an image or re-running Helm as the
+deployment mechanism. That's the entire reason the chart offers git-sync:
+DAG code changes constantly, and nobody wants an image build per edit.
+
+One nuance for completeness: a *newly added* DAG appears in the UI paused
+(that's the `paused` event you see in the audit log) — it can't run until
+unpaused, which is a safety default, not git-sync behavior.
+
 The two files:
 
 | File | DAG in the UI | What it does | Why it's here |

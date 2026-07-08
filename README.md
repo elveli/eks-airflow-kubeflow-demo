@@ -271,6 +271,28 @@ limit, but if you ever see `ErrImagePull` / `toomanyrequests` on
 switch the base image to `public.ecr.aws/docker/library/python:3.11-slim`
 (same image, mirrored on ECR Public, no Docker Hub limits).
 
+**Where the pulls land:** on each node's own 20 GiB gp3 root EBS volume
+(`disk_size` in `modules/eks`). EKS AL2023 nodes run containerd, which keeps
+image layers under `/var/lib/containerd/`. Three consequences worth knowing:
+
+* The cache is **per node and dies with the node**. That's exactly why the
+  scale-from-zero `pipelines` node re-pulls everything on every scale-up (and
+  why the `general` nodes, which live long, only pay the pull once). Nodes
+  don't share layers — two nodes pulling the same image download it twice.
+* The kubelet garbage-collects old images if the disk passes ~85 % full;
+  this stack peaks at ~4–5 GiB of images, so 20 GiB never gets close.
+* You can inspect a node's cache without SSH — Kubernetes reports it in node
+  status:
+
+  ```bash
+  kubectl get node <node-name> \
+    -o jsonpath='{range .status.images[*]}{.sizeBytes}{"\t"}{.names[-1]}{"\n"}{end}' | sort -rn | head
+  ```
+
+If the repeat pulls on scale-from-zero ever bothered you (for this demo they
+shouldn't), the standard fixes are an ECR pull-through cache, a warm pool, or
+just accepting the ~2 minutes — this repo does the latter.
+
 If `terraform apply` ever fails with a Kubernetes-provider connection error
 (rare bootstrap race), run it in two phases:
 `terraform apply -target=module.vpc -target=module.eks -target=module.iam && terraform apply`.

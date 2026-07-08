@@ -207,6 +207,36 @@ aws s3 ls --recursive "s3://$(terraform -chdir=terraform output -raw s3_bucket)/
 # → .../<timestamp>/model.joblib  and  .../<timestamp>/metrics.json
 ```
 
+After one run of each DAG, the whole bucket looks like this
+(`aws s3 ls --recursive s3://<bucket>/` to see it flat):
+
+```
+s3://afkf-demo-mlops-<hex>/
+├── airflow-logs/                        # every task's log, written via IRSA (7-day expiry)
+│   ├── dag_id=etl_simple/
+│   │   └── run_id=manual__2026-07-08T18:02:11+00:00/
+│   │       ├── task_id=extract/attempt=1.log
+│   │       ├── task_id=transform/attempt=1.log
+│   │       └── task_id=load/attempt=1.log
+│   └── dag_id=train_on_kubeflow/
+│       └── run_id=manual__2026-07-08T18:10:42+00:00/
+│           ├── task_id=submit_kfp_run/attempt=1.log
+│           └── task_id=report_artifacts/attempt=1.log
+├── etl/
+│   └── 2026-07-08/
+│       └── summary.json                 # DAG 1 output: revenue-per-city aggregate
+└── kfp-artifacts/
+    └── 20260708-181530/                 # UTC timestamp of the KFP run
+        ├── model.joblib                 # the trained RandomForest
+        └── metrics.json                 # {"accuracy": 0.97..., "published_at": ...}
+```
+
+The `dag_id=/run_id=/task_id=` layout is Airflow's default remote-log naming —
+it means the S3 console doubles as a browsable log archive. Note that KFP's
+*intermediate* artifacts (what you see attached to steps in the KFP UI) live
+in the in-cluster MinIO, not here: only what the `evaluate_and_publish`
+component explicitly uploads reaches this bucket.
+
 ### Container images: what gets pulled, and from where
 
 The "pulling images" wait in step 2 happens on the freshly scaled-from-zero

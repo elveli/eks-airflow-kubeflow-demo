@@ -118,3 +118,16 @@ workers:
 logs:
   persistence:
     enabled: false
+
+# CRITICAL for Terraform installs: by default these two jobs run as Helm
+# post-install HOOKS. `helm install --wait` (the helm provider's default)
+# waits for all pods to be Ready BEFORE running post-install hooks — but the
+# scheduler/webserver can't become Ready until the migration job has run.
+# Deadlock → guaranteed timeout. Running the jobs as regular chart resources
+# (the chart's documented pattern for Terraform/ArgoCD) breaks the cycle;
+# their built-in ttlSecondsAfterFinished keeps completed jobs from blocking
+# future upgrades.
+migrateDatabaseJob:
+  useHelmHooks: false
+createUserJob:
+  useHelmHooks: false

@@ -13,7 +13,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-KFP_VERSION="${KFP_VERSION:-2.2.0}"
+# 2.16.1: DON'T pin older versions casually — Google purged many old
+# gcr.io/ml-pipeline tags when Container Registry was sunset, so e.g. the
+# 2.2.0/2.5.0 manifests reference images that no longer exist (their minio
+# tag 404s). 2.14+ pulls from ghcr.io / Docker Hub / quay.io instead and
+# ships seaweedfs as the object store.
+KFP_VERSION="${KFP_VERSION:-2.16.1}"
 ROLE_ARN="$(terraform -chdir=terraform output -raw kfp_irsa_role_arn)"
 
 echo ">>> Installing Kubeflow Pipelines standalone ${KFP_VERSION}"
@@ -25,9 +30,9 @@ echo ">>> Annotating pipeline-runner SA with IRSA role (S3 access for pipeline p
 kubectl -n kubeflow annotate serviceaccount pipeline-runner \
   "eks.amazonaws.com/role-arn=${ROLE_ARN}" --overwrite
 
-echo ">>> Waiting for KFP deployments (first image pulls take several minutes)"
-for d in ml-pipeline ml-pipeline-ui mysql minio workflow-controller metadata-grpc-deployment; do
-  kubectl -n kubeflow rollout status "deploy/${d}" --timeout=900s
+echo ">>> Waiting for ALL KFP deployments (first image pulls take several minutes)"
+for d in $(kubectl -n kubeflow get deploy -o name); do
+  kubectl -n kubeflow rollout status "$d" --timeout=900s
 done
 
 echo ""

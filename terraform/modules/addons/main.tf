@@ -142,7 +142,10 @@ resource "helm_release" "cluster_autoscaler" {
   namespace  = "kube-system"
   repository = "https://kubernetes.github.io/autoscaler"
   chart      = "cluster-autoscaler"
-  version    = "9.37.0"
+  # Chart RBAC must be new enough for the autoscaler image: 9.37.0's
+  # ClusterRole lacks volumeattachments list/watch, which CA >= 1.33 requires —
+  # the informers never sync and CA silently never scales anything.
+  version = "9.58.0"
 
   set {
     name  = "autoDiscovery.clusterName"

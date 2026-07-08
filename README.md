@@ -59,7 +59,7 @@ flowchart TB
 
             subgraph NG1["node group: general\nt3.large SPOT × 1-2"]
                 AF["Airflow\nscheduler · webserver · Postgres (PVC)"]
-                KFPC["KFP control plane\nml-pipeline · UI · MySQL · minio (PVCs)"]
+                KFPC["KFP control plane\nml-pipeline · UI · MySQL · seaweedfs (PVCs)"]
                 SYS["cluster-autoscaler · ALB controller\nEBS CSI · metrics-server"]
             end
 
@@ -253,7 +253,7 @@ s3://afkf-demo-mlops-<hex>/
 The `dag_id=/run_id=/task_id=` layout is Airflow's default remote-log naming —
 it means the S3 console doubles as a browsable log archive. Note that KFP's
 *intermediate* artifacts (what you see attached to steps in the KFP UI) live
-in the in-cluster MinIO, not here: only what the `evaluate_and_publish`
+in the in-cluster seaweedfs object store, not here: only what the `evaluate_and_publish`
 component explicitly uploads reaches this bucket.
 
 ### Container images: what gets pulled, and from where
@@ -264,8 +264,8 @@ node, which always starts with an empty image cache:
 | Image | Registry | Role |
 |---|---|---|
 | `python:3.11-slim` | Docker Hub | Base image for both pipeline components (set in `pipelines/sklearn_pipeline.py`) |
-| `gcr.io/ml-pipeline/kfp-launcher` | Google (gcr.io) | Injected by KFP v2 into every executor pod to shuttle inputs/outputs |
-| `gcr.io/ml-pipeline/argoexec` | Google (gcr.io) | Argo sidecar supervising each step's container |
+| `ghcr.io/kubeflow/kfp-launcher` | GitHub (ghcr.io) | Injected by KFP v2 into every executor pod to shuttle inputs/outputs |
+| `quay.io/argoproj/argoexec` | Red Hat (quay.io) | Argo sidecar supervising each step's container |
 | `amazon-k8s-cni`, `kube-proxy`, `ebs-csi-node` | Amazon regional ECR | DaemonSets every brand-new node pulls before it's Ready |
 
 The components' Python deps (`scikit-learn`, `boto3`) are in **no** image —
@@ -277,12 +277,16 @@ The rest of the stack is pulled once at deploy time:
 * **Airflow** (`airflow` ns): `apache/airflow:2.10.5` (Docker Hub),
   `registry.k8s.io/git-sync/git-sync`, `bitnamilegacy/postgresql` (Docker Hub)
 * **KFP control plane** (`kubeflow` ns): ~10 images, nearly all
-  `gcr.io/ml-pipeline/*` (api-server, ui, workflow-controller, mysql, minio…)
+  `ghcr.io/kubeflow/kfp-*` (api-server, frontend, persistence-agent…), plus
+  `mysql:8.4` and `chrislusf/seaweedfs` from Docker Hub,
+  `quay.io/argoproj/workflow-controller`, and one gcr.io holdout
+  (`gcr.io/tfx-oss-public/ml_metadata_store_server`)
 * **Addons** (`kube-system`): `registry.k8s.io/autoscaling/cluster-autoscaler`,
   `registry.k8s.io/metrics-server/*`, `public.ecr.aws/eks/aws-load-balancer-controller`
 
-So four public registries in total — Docker Hub, gcr.io, registry.k8s.io,
-ECR (public + regional) — all reached over the nodes' public-subnet egress,
+So six public registries in total — Docker Hub, ghcr.io, quay.io,
+registry.k8s.io, gcr.io, ECR (public + regional) — all reached over the
+nodes' public-subnet egress,
 which is why the no-NAT design still needs internet access. Docker Hub pulls
 are anonymous and **rate-limited**: this demo normally stays well under the
 limit, but if you ever see `ErrImagePull` / `toomanyrequests` on
@@ -364,7 +368,7 @@ Not demoing today? Scale every node group to zero and keep all state:
 
 `off` pauses the cluster-autoscaler first (otherwise it would immediately
 scale back up for the pending Airflow pods), then sets both node groups to
-`min=0, desired=0`. The Airflow DB and KFP MySQL/minio PVCs persist, so
+`min=0, desired=0`. The Airflow DB and KFP MySQL/seaweedfs PVCs persist, so
 DAG history and pipeline runs survive. A later `terraform apply` also acts
 as "on" (it restores `min_size`; `desired_size` is lifecycle-ignored).
 
@@ -390,7 +394,7 @@ This is deliberately **more than** `terraform destroy`, in this order:
 
 | Resource | Created by | Leak scenario | Covered by |
 |---|---|---|---|
-| EBS volumes (Postgres 8 Gi, MySQL 20 Gi, minio 20 Gi) | EBS CSI driver via PVCs | cluster destroyed before PVCs deleted | teardown step 2; audit via `cleanup-orphans.sh --delete` |
+| EBS volumes (Postgres 8 Gi, MySQL 20 Gi, seaweedfs 20 Gi) | EBS CSI driver via PVCs | cluster destroyed before PVCs deleted | teardown step 2; audit via `cleanup-orphans.sh --delete` |
 | ALB/NLB/classic ELB + their security groups | LB controller / Services | ingress or LB Service left at destroy time | teardown step 1 + orphan script |
 | S3 bucket + objects | Terraform | `force_destroy=false` (not here) or destroy interrupted | `force_destroy=true` + orphan script |
 | CloudWatch log groups `/aws/eks/<cluster>/*` | EKS if control-plane logging enabled | logging enabled manually at some point | never enabled + orphan script |
@@ -465,6 +469,14 @@ before exposing anything.
 
 ## Known gotchas
 
+* **Don't pin old KFP versions.** Google's Container Registry sunset purged
+  many `gcr.io/ml-pipeline` tags, so KFP ≤ 2.5 manifests reference images
+  that now 404 (their minio tag, for one). `deploy-kfp.sh` pins 2.16.1, which
+  pulls from ghcr.io / Docker Hub / quay.io instead.
+* **Chart RBAC must match the autoscaler image.** The cluster-autoscaler Helm
+  chart ships the ClusterRole; an old chart with a new image (≥ 1.33 needs
+  `volumeattachments` list/watch) leaves the autoscaler silently unable to
+  scale anything. Symptom: pods Pending forever, `forbidden` spam in its logs.
 * **Spot capacity errors** at node-group creation: add more instance types to
   `general_instance_types` / `pipelines_instance_types` or switch region.
 * **Bitnami image purge**: Docker Hub `bitnami/postgresql` tags moved in 2025;

@@ -44,7 +44,7 @@ case "$MODE" in
     ;;
   on)
     echo ">>> Restoring node groups"
-    scale general 1 2 1
+    scale general 1 2 2
     scale pipelines 0 2 0
     echo ">>> Resuming cluster-autoscaler"
     kubectl -n kube-system scale deploy \

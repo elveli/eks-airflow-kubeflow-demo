@@ -73,7 +73,12 @@ variable "pipelines_instance_types" {
 }
 
 variable "general_scaling" {
-  description = "Scaling for the general node group. Steady state is usually 2 nodes once KFP is installed."
+  description = <<-EOT
+    Scaling for the general node group. desired=2 because Airflow + the KFP
+    control plane genuinely need two t3.larges — starting at 1 packs
+    everything (much of it request-less) onto one node and triggers an
+    eviction storm during the KFP install.
+  EOT
   type = object({
     min_size     = number
     max_size     = number
@@ -82,7 +87,7 @@ variable "general_scaling" {
   default = {
     min_size     = 1
     max_size     = 2
-    desired_size = 1
+    desired_size = 2
   }
 }
 

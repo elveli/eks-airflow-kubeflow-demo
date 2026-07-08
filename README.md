@@ -21,6 +21,25 @@ SPOT nodes, no NAT gateway, no RDS, no load balancers, a scale-from-zero node
 group for ML workloads, and a kill switch that parks the whole cluster at
 ~$2.50/day.
 
+## Contents
+
+- [Architecture](#architecture)
+- [What the files in `dags/` are, and why they exist](#what-the-files-in-dags-are-and-why-they-exist)
+- [💸 Cost estimate](#-cost-estimate)
+- [Prerequisites](#prerequisites)
+- [Deploy](#deploy)
+  - [Run the demo](#run-the-demo)
+  - [Container images: what gets pulled, and from where](#container-images-what-gets-pulled-and-from-where)
+  - [Manual steps, called out honestly](#manual-steps-called-out-honestly)
+  - [Inspecting the Helm releases from the CLI](#inspecting-the-helm-releases-from-the-cli)
+- [🔴 Cost kill switch (park it, don't destroy it)](#-cost-kill-switch-park-it-dont-destroy-it)
+- [Teardown](#teardown)
+  - [Resources that can leak and keep billing](#resources-that-can-leak-and-keep-billing)
+- [Design decisions & tradeoffs](#design-decisions--tradeoffs)
+- [Optional: expose Airflow via ALB](#optional-expose-airflow-via-alb)
+- [Known gotchas](#known-gotchas)
+- [Repository layout](#repository-layout)
+
 ---
 
 ## Architecture
@@ -402,8 +421,13 @@ behind a **single** NAT gateway if your org policy requires it.
 central dashboard…) needs ~4× this cluster. Standalone KFP is the pipelines
 engine only, which is exactly what the demo shows.
 
-**Bundled Postgres, not RDS.** Airflow chart's PostgreSQL subchart on an 8 Gi
-gp3 PVC. Fine for a demo; first thing to replace for anything real.
+**Bundled Postgres, not RDS.** "Bundled" means Airflow's metadata database is
+not an external AWS service but ships *inside the Helm chart* as a subchart:
+a PostgreSQL container running as an ordinary pod in the cluster
+(`airflow-postgresql-0` in the `airflow` namespace), its data on an 8 Gi gp3
+PVC. Zero extra AWS cost beyond that volume, but no backups, no failover, and
+it dies with the cluster — fine for a demo; the first thing to replace with
+RDS for anything real.
 
 **Taint on the `pipelines` group.** Guarantees only KFP executor pods (which
 carry a matching toleration, added via `kfp-kubernetes` in the pipeline code)
@@ -416,9 +440,10 @@ selector alone.
 (~1 min) instead of maintaining an ECR image. Right tradeoff for a demo,
 wrong one for production.
 
-## Optional: expose Airflow via ALB (adds ~$0.60+/day)
+## Optional: expose Airflow via ALB
 
-Port-forwarding costs nothing; only do this if you must share the UI. With the
+Port-forwarding costs nothing; an ALB adds ~$0.60+/day — only do this if you
+must share the UI. With the
 ALB controller already installed:
 
 ```yaml

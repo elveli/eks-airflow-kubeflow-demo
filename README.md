@@ -185,6 +185,29 @@ If `terraform apply` ever fails with a Kubernetes-provider connection error
    the manifests are applied).
 3. **Unpause the DAGs** in the Airflow UI before triggering.
 
+### Inspecting the Helm releases from the CLI
+
+Terraform installs everything through Helm, so the `helm` CLI is the fastest
+way to see what's actually configured. It talks to your current kubeconfig
+context — run `make kubeconfig` first (and `kubectl config current-context`
+if you're not sure which cluster you're pointed at).
+
+```bash
+helm list -A                                    # all releases in all namespaces
+helm get values airflow -n airflow              # the overrides Terraform passed in
+helm get values airflow -n airflow --all        # merged with chart defaults = effective config
+helm get manifest airflow -n airflow            # the rendered Kubernetes YAML
+helm status airflow -n airflow                  # release health / last deploy result
+helm history cluster-autoscaler -n kube-system  # revision history of a release
+```
+
+To browse a chart's *available* settings before changing the values template:
+
+```bash
+helm show values airflow --repo https://airflow.apache.org --version 1.16.0 | less
+helm show values aws-load-balancer-controller --repo https://aws.github.io/eks-charts --version 1.8.1
+```
+
 ---
 
 ## 🔴 Cost kill switch (park it, don't destroy it)

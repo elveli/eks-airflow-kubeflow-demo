@@ -207,6 +207,40 @@ aws s3 ls --recursive "s3://$(terraform -chdir=terraform output -raw s3_bucket)/
 # → .../<timestamp>/model.joblib  and  .../<timestamp>/metrics.json
 ```
 
+### Container images: what gets pulled, and from where
+
+The "pulling images" wait in step 2 happens on the freshly scaled-from-zero
+node, which always starts with an empty image cache:
+
+| Image | Registry | Role |
+|---|---|---|
+| `python:3.11-slim` | Docker Hub | Base image for both pipeline components (set in `pipelines/sklearn_pipeline.py`) |
+| `gcr.io/ml-pipeline/kfp-launcher` | Google (gcr.io) | Injected by KFP v2 into every executor pod to shuttle inputs/outputs |
+| `gcr.io/ml-pipeline/argoexec` | Google (gcr.io) | Argo sidecar supervising each step's container |
+| `amazon-k8s-cni`, `kube-proxy`, `ebs-csi-node` | Amazon regional ECR | DaemonSets every brand-new node pulls before it's Ready |
+
+The components' Python deps (`scikit-learn`, `boto3`) are in **no** image —
+KFP pip-installs them at container start (`packages_to_install`), which is a
+separate delay paid on *every* run, image cache or not.
+
+The rest of the stack is pulled once at deploy time:
+
+* **Airflow** (`airflow` ns): `apache/airflow:2.10.5` (Docker Hub),
+  `registry.k8s.io/git-sync/git-sync`, `bitnamilegacy/postgresql` (Docker Hub)
+* **KFP control plane** (`kubeflow` ns): ~10 images, nearly all
+  `gcr.io/ml-pipeline/*` (api-server, ui, workflow-controller, mysql, minio…)
+* **Addons** (`kube-system`): `registry.k8s.io/autoscaling/cluster-autoscaler`,
+  `registry.k8s.io/metrics-server/*`, `public.ecr.aws/eks/aws-load-balancer-controller`
+
+So four public registries in total — Docker Hub, gcr.io, registry.k8s.io,
+ECR (public + regional) — all reached over the nodes' public-subnet egress,
+which is why the no-NAT design still needs internet access. Docker Hub pulls
+are anonymous and **rate-limited**: this demo normally stays well under the
+limit, but if you ever see `ErrImagePull` / `toomanyrequests` on
+`python:3.11-slim` or the Airflow image, that's it — wait a few minutes, or
+switch the base image to `public.ecr.aws/docker/library/python:3.11-slim`
+(same image, mirrored on ECR Public, no Docker Hub limits).
+
 If `terraform apply` ever fails with a Kubernetes-provider connection error
 (rare bootstrap race), run it in two phases:
 `terraform apply -target=module.vpc -target=module.eks -target=module.iam && terraform apply`.

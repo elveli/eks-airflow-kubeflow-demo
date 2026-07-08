@@ -307,6 +307,42 @@ component explicitly uploads reaches this bucket.
 > pattern to copy either way: the engine's scratch space is disposable and
 > cluster-local, while anything that matters gets published to real S3.
 
+And the real thing — actual listings from a working deployment after three
+pipeline runs and one ETL run:
+
+```
+$ aws s3 ls --recursive "s3://$(terraform -chdir=terraform output -raw s3_bucket)/kfp-artifacts/"
+2026-07-08 16:03:22         52 kfp-artifacts/20260708-230321/metrics.json
+2026-07-08 16:03:22     275265 kfp-artifacts/20260708-230321/model.joblib
+2026-07-08 16:16:00         52 kfp-artifacts/20260708-231559/metrics.json
+2026-07-08 16:16:00     275265 kfp-artifacts/20260708-231559/model.joblib
+2026-07-08 16:24:03         52 kfp-artifacts/20260708-232402/metrics.json
+2026-07-08 16:24:03     275265 kfp-artifacts/20260708-232402/model.joblib
+
+$ aws s3 ls --recursive "s3://$(terraform -chdir=terraform output -raw s3_bucket)/airflow-logs/"
+2026-07-08 15:54:12      63370 airflow-logs/dag_id=etl_simple/run_id=manual__2026-07-08T22:53:27.214841+00:00/task_id=extract/attempt=1.log
+2026-07-08 15:54:48       2826 airflow-logs/dag_id=etl_simple/run_id=manual__2026-07-08T22:53:27.214841+00:00/task_id=load/attempt=1.log
+2026-07-08 15:54:32       3118 airflow-logs/dag_id=etl_simple/run_id=manual__2026-07-08T22:53:27.214841+00:00/task_id=transform/attempt=1.log
+2026-07-08 16:03:55       9345 airflow-logs/dag_id=train_on_kubeflow/run_id=manual__2026-07-08T22:59:50.981548+00:00/task_id=report_artifacts/attempt=1.log
+2026-07-08 16:03:37      26243 airflow-logs/dag_id=train_on_kubeflow/run_id=manual__2026-07-08T22:59:50.981548+00:00/task_id=submit_kfp_run/attempt=1.log
+2026-07-08 16:16:51       3577 airflow-logs/dag_id=train_on_kubeflow/run_id=manual__2026-07-08T23:12:45+00:00/task_id=report_artifacts/attempt=1.log
+2026-07-08 16:16:32      26187 airflow-logs/dag_id=train_on_kubeflow/run_id=manual__2026-07-08T23:12:45+00:00/task_id=submit_kfp_run/attempt=1.log
+2026-07-08 16:24:40       3961 airflow-logs/dag_id=train_on_kubeflow/run_id=manual__2026-07-08T23:20:53.838844+00:00/task_id=report_artifacts/attempt=1.log
+2026-07-08 16:24:21      26245 airflow-logs/dag_id=train_on_kubeflow/run_id=manual__2026-07-08T23:20:53.838844+00:00/task_id=submit_kfp_run/attempt=1.log
+```
+
+Three details worth noticing in there:
+
+* Every `model.joblib` is byte-identical in size (275 265) — training is
+  fully deterministic (`random_state=42`, bundled dataset), so each run grows
+  the same forest. Reproducibility, visible from a directory listing.
+* The first `train_on_kubeflow` run's logs include a `report_artifacts`
+  attempt — that run's reporting task *failed* (a since-fixed bug), and its
+  failure log was shipped to S3 like any other. Remote logging captures
+  failures, which is the whole point.
+* `submit_kfp_run` logs are ~26 KB vs ~3 KB for other tasks: that's the
+  buffered virtualenv build (pip install of the KFP SDK) dumped into the log.
+
 ### Container images: what gets pulled, and from where
 
 The "pulling images" wait in step 2 happens on the freshly scaled-from-zero

@@ -298,6 +298,14 @@ it means the S3 console doubles as a browsable log archive. Note that KFP's
 in the in-cluster seaweedfs object store, not here: only what the `evaluate_and_publish`
 component explicitly uploads reaches this bucket.
 
+> **MinIO / seaweedfs, in one breath:** KFP can't assume it runs on AWS, so it
+> bundles an in-cluster object store that *speaks the S3 API* for its internal
+> artifacts. For years that was **MinIO** ("self-hosted S3"); KFP 2.14+ swapped
+> it for **seaweedfs** (MinIO's move to AGPL licensing being a big driver) —
+> though relics like the `mlpipeline-minio-artifact` secret name remain. The
+> pattern to copy either way: the engine's scratch space is disposable and
+> cluster-local, while anything that matters gets published to real S3.
+
 ### Container images: what gets pulled, and from where
 
 The "pulling images" wait in step 2 happens on the freshly scaled-from-zero

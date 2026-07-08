@@ -25,6 +25,7 @@ group for ML workloads, and a kill switch that parks the whole cluster at
 
 - [Architecture](#architecture)
 - [What the files in `dags/` are, and why they exist](#what-the-files-in-dags-are-and-why-they-exist)
+- [Airflow vs. Kubeflow Pipelines — why both?](#airflow-vs-kubeflow-pipelines--why-both)
 - [💸 Cost estimate](#-cost-estimate)
 - [Prerequisites](#prerequisites)
 - [Deploy](#deploy)
@@ -112,6 +113,47 @@ the Kubeflow pipeline (`sklearn_pipeline.py` source → compiled
 `sklearn_pipeline.yaml`) that the second DAG submits. It rides along in the
 same git-sync clone, which is how the DAG finds the YAML at
 `../pipelines/sklearn_pipeline.yaml`.
+
+## Airflow vs. Kubeflow Pipelines — why both?
+
+Both run DAGs of tasks, so they look similar at first. The difference is what
+they're for:
+
+**Airflow is the general-purpose scheduler and orchestrator.** It answers
+"*when* should things run, in what order, and what happens on failure?" —
+cron schedules, retries, backfills, alerting, and hundreds of integrations
+(S3, databases, Spark, dbt…). A task can be anything; Airflow doesn't care
+that one of them happens to be "ML".
+
+**Kubeflow Pipelines is an ML-specific execution engine on Kubernetes.** It
+answers "*how* do I run an ML workflow reproducibly?" — every step is a
+container with typed inputs/outputs, and KFP tracks the artifacts (datasets,
+models), metrics (the accuracy on the evaluate step) and lineage across runs,
+supports experiments for comparing runs, and lets each step demand its own
+resources. That last part is how this demo's pipeline pins itself to the
+scale-from-zero node group — and how a real one would request GPUs for
+training only.
+
+| | Airflow | Kubeflow Pipelines |
+|---|---|---|
+| Center of gravity | Scheduling + integration ("data platform conductor") | ML reproducibility + artifact/metric tracking |
+| A "task" is | Any Python/operator code | A container with typed inputs/outputs |
+| Killer features | Cron, retries, backfills, 100s of integrations | Artifact lineage, experiments, per-step resources (GPUs) |
+| Who lives in it | Data engineers | ML engineers / data scientists |
+
+**Why both, together:** in real orgs Airflow is the system of record for "the
+nightly retraining runs at 2am, *after* the ETL that produces the training
+data succeeded, and pages someone if it fails" — while the ML work itself
+runs in KFP, where models, metrics and lineage are tracked. That handoff is
+exactly what this repo demonstrates: `etl_simple` is a pure-Airflow job;
+`train_on_kubeflow` is Airflow delegating to KFP with one API call and
+waiting for the verdict.
+
+If you only need one: a pure data-engineering shop is fine with Airflow alone
+(it can run training scripts too — it just won't track models or experiments
+for you), and an ML-only team can live in KFP alone (it has recurring runs) —
+until their pipelines start depending on upstream business data, which is
+where Airflow's integration breadth earns its keep.
 
 ---
 

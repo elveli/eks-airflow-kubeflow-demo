@@ -83,13 +83,17 @@ def train_on_kubeflow():
         return run.run_id
 
     @task
-    def report_artifacts(run_id: str) -> list[str]:
-        """List what the pipeline published to S3."""
+    def report_artifacts(kfp_run_id: str) -> list[str]:
+        """List what the pipeline published to S3.
+
+        NB: the parameter must NOT be called `run_id` — that's a reserved
+        Airflow context key, and TaskFlow refuses arguments shadowing it.
+        """
         import boto3
 
         resp = boto3.client("s3").list_objects_v2(Bucket=S3_BUCKET, Prefix="kfp-artifacts/")
         keys = [obj["Key"] for obj in resp.get("Contents", [])]
-        log.info("KFP run %s artifacts in s3://%s:", run_id, S3_BUCKET)
+        log.info("KFP run %s artifacts in s3://%s:", kfp_run_id, S3_BUCKET)
         for key in keys:
             log.info("  %s", key)
         if not keys:

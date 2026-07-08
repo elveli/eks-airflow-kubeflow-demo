@@ -1,8 +1,20 @@
 # Airflow + Kubeflow Pipelines on EKS — cost-optimized demo
 
 A **throwaway showcase** that provisions an EKS cluster with Terraform and runs
-**Apache Airflow** (KubernetesExecutor) orchestrating a **Kubeflow Pipelines**
-scikit-learn training pipeline end-to-end, with artifacts and logs in S3 via IRSA.
+**Apache Airflow** (KubernetesExecutor) orchestrating a **Kubeflow Pipelines
+(KFP)** scikit-learn training pipeline end-to-end, with artifacts and logs in
+S3 via IRSA.
+
+Naming notes, so nothing reads like line noise:
+
+* **KFP** = **K**ubeflow **P**ipelines — the ML-workflow engine from the
+  Kubeflow project. We deploy only this component, not the full Kubeflow
+  platform (see design decisions below).
+* **afkf** = **a**ir**f**low + **k**ube**f**low — nothing more than the default
+  `project_name` prefix stamped on every AWS resource this repo creates
+  (`afkf-demo-eks` cluster, `afkf-demo-mlops-*` bucket, IAM roles…). Change it
+  via `project_name` in `terraform.tfvars` if you prefer, but only before the
+  first `apply`.
 
 Everything is tuned for **minimum burn rate**, not production resilience:
 SPOT nodes, no NAT gateway, no RDS, no load balancers, a scale-from-zero node
@@ -53,6 +65,34 @@ KFP schedules executor pods pinned to the `pipelines` node group → the cluster
 autoscaler boots a t3.xlarge **from zero** → the pipeline trains/evaluates a
 RandomForest and uploads the model to S3 → the node scales back to zero ~2 min
 later → a final Airflow task lists the artifacts in S3.
+
+## What the files in `dags/` are, and why they exist
+
+In Airflow, every workflow is a **DAG** (directed acyclic graph) **defined as
+a Python file**. Airflow scans a folder, imports each `.py` file it finds, and
+every DAG defined inside becomes a runnable, schedulable workflow in the UI —
+no separate deploy step. Without these files Airflow would boot fine but sit
+completely empty: they *are* the demo content.
+
+**How they get into the cluster:** you never copy them anywhere. A git-sync
+sidecar inside the Airflow pods clones **this GitHub repo** (the
+`dags_repo_url` variable) and re-pulls every 60 seconds; Airflow scans the
+repo's `dags/` folder. Push a change to `main` and it shows up in the UI
+within a minute — that's also why this repo must be reachable (public) from
+the cluster.
+
+The two files:
+
+| File | DAG in the UI | What it does | Why it's here |
+|---|---|---|---|
+| `dags/etl_simple.py` | `etl_simple` | Generates 1 000 fake order rows → aggregates revenue per city → writes `summary.json` to `s3://<bucket>/etl/<date>/` | Smoke test. Proves Airflow schedules task pods and that they can write to S3 **with no credentials configured** (IRSA). Run it first; it finishes in ~1 min. |
+| `dags/trigger_kubeflow_pipeline.py` | `train_on_kubeflow` | Submits the compiled KFP package (`pipelines/sklearn_pipeline.yaml`) to the in-cluster KFP API, waits for the run to succeed, then lists the model artifacts that landed in `s3://<bucket>/kfp-artifacts/` | The headline: Airflow *orchestrating* Kubeflow. The KFP SDK isn't baked into the Airflow image — the task pip-installs it in a throwaway virtualenv at runtime. |
+
+Related but different: the `pipelines/` folder is **not** Airflow code — it's
+the Kubeflow pipeline (`sklearn_pipeline.py` source → compiled
+`sklearn_pipeline.yaml`) that the second DAG submits. It rides along in the
+same git-sync clone, which is how the DAG finds the YAML at
+`../pipelines/sklearn_pipeline.yaml`.
 
 ---
 

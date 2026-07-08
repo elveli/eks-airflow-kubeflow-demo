@@ -99,9 +99,12 @@ completely empty: they *are* the demo content.
 **How they get into the cluster:** you never copy them anywhere. A git-sync
 sidecar inside the Airflow pods clones **this GitHub repo** (the
 `dags_repo_url` variable) and re-pulls every 60 seconds; Airflow scans the
-repo's `dags/` folder. Push a change to `main` and it shows up in the UI
-within a minute — that's also why this repo must be reachable (public) from
-the cluster.
+repo's `dags/` folder. Push a change to `main` and it shows up in the
+**Airflow web UI** (the DAGs list at http://localhost:8080 — check a DAG's
+*Code* tab to see exactly what git-sync delivered) within a minute. That's
+also why this repo must be reachable (public) from the cluster. The Kubeflow
+UI is uninvolved: KFP never reads git; it only receives what Airflow submits
+to its API.
 
 #### git-sync, demystified — do I ever need to push?
 

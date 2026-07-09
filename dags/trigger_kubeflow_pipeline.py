@@ -1,4 +1,4 @@
-"""Sample DAG 2 — Airflow orchestrating a Kubeflow Pipelines run end-to-end.
+"""Sample DAG 2 — Airflow orchestrating a Kubeflow Pipelines run end-to-end. Dummy edit here to trigger Airflow event.
 
 submit_kfp_run:
     Runs in a per-task virtualenv (KubernetesExecutor pod pip-installs the

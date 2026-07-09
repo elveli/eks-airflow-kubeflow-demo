@@ -78,4 +78,6 @@ nodegroups:  ## node groups (scaling, eligible AZs) + live nodes with their actu
 	done; } | column -t
 	@echo ""
 	@echo "Live nodes (actual AZ — spot placement can pile into one AZ, see README):"
-	@kubectl get nodes -L topology.kubernetes.io/zone,workload 2>/dev/null || echo "  (cluster unreachable or zero nodes)"
+	@kubectl get nodes -o custom-columns='NAME:.metadata.name,INSTANCE:.spec.providerID,ZONE:.metadata.labels.topology\.kubernetes\.io/zone,WORKLOAD:.metadata.labels.workload,READY:.status.conditions[-1].type' 2>/dev/null \
+	  | sed 's|aws:///[a-z0-9-]*/||' | column -t \
+	  || echo "  (cluster unreachable or zero nodes)"

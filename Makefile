@@ -1,7 +1,7 @@
 # Convenience wrapper — every target is also runnable by hand (see README).
 TF := terraform -chdir=terraform
 
-.PHONY: init plan apply kubeconfig kfp deploy pipeline pf stop start destroy orphans volumes inventory nodegroups pods
+.PHONY: init plan apply kubeconfig kfp deploy pipeline pf stop start destroy orphans volumes inventory nodegroups pods s3
 
 init:        ## terraform init
 	$(TF) init
@@ -51,6 +51,10 @@ inventory:   ## every AWS resource carrying the Terraform default Project tag (C
 
 pods:        ## every pod in the cluster, with the node it runs on (see README: "What a healthy system looks like")
 	kubectl get pods -A -o wide
+
+s3:          ## everything in the demo bucket (task logs, ETL output, published models) + totals
+	aws s3 ls --recursive --human-readable --summarize \
+	  "s3://$$($(TF) output -raw s3_bucket)/"
 
 nodegroups:  ## node groups (scaling, eligible AZs) + live nodes with their actual AZ
 	@{ echo "NAME STATUS CAPACITY TYPES MIN DESIRED MAX ELIGIBLE_AZS"; \

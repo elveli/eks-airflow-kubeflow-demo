@@ -287,6 +287,7 @@ Or with make: `make deploy` then `make pf`.
 | `make workflows` | KFP runs as Argo Workflow objects, oldest first | Pipeline run states without the UI; pairs with `make dags` |
 | `make sidecars` | Pods with >1 container: sidecar + init container names | Decode the READY column; find `-c` targets for logs/exec |
 | `make pdbs` | PodDisruptionBudgets + any draining nodes + zero-budget PDBs | Watch `make stop` shutdowns; explains the lingering last node |
+| `make force-drain` | Delete non-DaemonSet pods on cordoned nodes (bypasses PDBs) | When `make pdbs` shows a drain stuck on zero-budget PDBs |
 | `make nodegroups` | Node groups (scaling, eligible AZs) + live nodes with their actual AZ | Sanity check after `stop`/`start`; AZ-mismatch debugging |
 | `make volumes` | CSI-provisioned EBS volumes with AZ (the PVCs that bill while parked) | Cost check while parked; AZ-mismatch debugging; leak check |
 | `make inventory` | Every AWS resource carrying the Terraform `Project` tag | "What exists right now?" audit |
@@ -698,8 +699,10 @@ replica is already down (Pending), so the budget allows zero further
 disruptions and the eviction API politely refuses — until EKS's drain times
 out and force-terminates. Harmless (a few cents), just don't be surprised
 that `kubectl get nodes` shows one `Ready,SchedulingDisabled` node for a
-while. To hurry it: `kubectl -n kube-system delete pod <the blocked pods>` —
-direct deletion bypasses PDBs (they only gate evictions).
+while. To hurry it: `make force-drain` — it deletes the non-DaemonSet pods on
+cordoned nodes; direct deletion bypasses PDBs (they only gate evictions).
+Diagnose first with `make pdbs`, which shows draining nodes and which budgets
+are at zero.
 
 ## Teardown
 

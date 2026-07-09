@@ -1,7 +1,7 @@
 # Convenience wrapper — every target is also runnable by hand (see README).
 TF := terraform -chdir=terraform
 
-.PHONY: init plan apply kubeconfig kfp deploy pipeline pf stop start destroy orphans volumes inventory nodegroups pods s3 dags workflows sidecars pdbs
+.PHONY: init plan apply kubeconfig kfp deploy pipeline pf stop start destroy orphans volumes inventory nodegroups pods s3 dags workflows sidecars pdbs force-drain
 
 init:        ## terraform init
 	$(TF) init
@@ -72,6 +72,9 @@ pdbs:        ## PodDisruptionBudgets + draining nodes — ALLOWED DISRUPTIONS 0 
 	@echo "PDBs with zero budget right now (evictions of their pods will be refused):"
 	@kubectl get pdb -A --no-headers 2>/dev/null | awk '$$5 == 0 {print "  " $$1 "/" $$2}' \
 	  | grep . || echo "  none — drains can proceed"
+
+force-drain: ## unstick PDB-blocked node drains: delete non-DaemonSet pods on cordoned nodes (bypasses PDBs)
+	@./scripts/force-drain.sh
 
 sidecars:    ## pods with >1 container: sidecars + init containers by name (see README: "Sidecars")
 	@kubectl get pods -A -o json | jq -r '.items[] \

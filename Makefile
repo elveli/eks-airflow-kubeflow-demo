@@ -1,7 +1,7 @@
 # Convenience wrapper — every target is also runnable by hand (see README).
 TF := terraform -chdir=terraform
 
-.PHONY: init plan apply kubeconfig kfp deploy pipeline pf stop start destroy orphans volumes inventory nodegroups pods s3
+.PHONY: init plan apply kubeconfig kfp deploy pipeline pf stop start destroy orphans volumes inventory nodegroups pods s3 dags workflows
 
 init:        ## terraform init
 	$(TF) init
@@ -55,6 +55,17 @@ pods:        ## every pod in the cluster, with the node it runs on (see README: 
 s3:          ## everything in the demo bucket (task logs, ETL output, published models) + totals
 	aws s3 ls --recursive --human-readable --summarize \
 	  "s3://$$($(TF) output -raw s3_bucket)/"
+
+dags:        ## Airflow DAGs (paused state) + each one's 3 most recent runs
+	@kubectl -n airflow exec deploy/airflow-scheduler -c scheduler -- bash -c \
+	  'airflow dags list -o plain; echo; \
+	   for d in $$(airflow dags list -o plain | tail -n +2 | sed "s/ .*//"); do \
+	     echo "=== recent runs: $$d"; \
+	     airflow dags list-runs -d "$$d" -o plain 2>/dev/null | head -4; echo; \
+	   done'
+
+workflows:   ## KFP runs as Argo Workflow objects, oldest first (one per pipeline run)
+	kubectl -n kubeflow get workflows --sort-by=.metadata.creationTimestamp
 
 nodegroups:  ## node groups (scaling, eligible AZs) + live nodes with their actual AZ
 	@{ echo "NAME STATUS CAPACITY TYPES MIN DESIRED MAX ELIGIBLE_AZS"; \

@@ -275,6 +275,8 @@ Or with make: `make deploy` then `make pf`.
 | `make start` | Kill switch ON — fresh nodes, pods reschedule (~5 min) | Start of the next demo day |
 | `make pods` | `kubectl get pods -A -o wide` — every pod + which node it's on | Quickest health check; compare against ["What a healthy system looks like"](#what-a-healthy-system-looks-like) |
 | `make s3` | Recursive bucket listing with human sizes + object/size totals | Verify DAG/pipeline outputs landed; storage-cost sanity check |
+| `make dags` | Airflow DAGs (paused state) + each one's 3 most recent runs | Run history without opening the UI |
+| `make workflows` | KFP runs as Argo Workflow objects, oldest first | Pipeline run states without the UI; pairs with `make dags` |
 | `make nodegroups` | Node groups (scaling, eligible AZs) + live nodes with their actual AZ | Sanity check after `stop`/`start`; AZ-mismatch debugging |
 | `make volumes` | CSI-provisioned EBS volumes with AZ (the PVCs that bill while parked) | Cost check while parked; AZ-mismatch debugging; leak check |
 | `make inventory` | Every AWS resource carrying the Terraform `Project` tag | "What exists right now?" audit |

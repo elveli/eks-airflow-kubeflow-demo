@@ -25,6 +25,11 @@ REGION="$($TF output -raw region)"
 CLUSTER="$($TF output -raw cluster_name)"
 MODE="${1:-}"
 
+# kubectl steps below MUST hit *this* cluster — not whatever context happens
+# to be current (a stale local-cluster context once made the autoscaler
+# resume silently no-op, leaving the cluster unable to scale).
+aws eks update-kubeconfig --region "$REGION" --name "$CLUSTER" >/dev/null
+
 scale() { # name min max desired
   aws eks update-nodegroup-config --region "$REGION" --cluster-name "$CLUSTER" \
     --nodegroup-name "$1" \
@@ -38,7 +43,8 @@ case "$MODE" in
     # for the pending Airflow pods. (maxSize must be >= 1 per the EKS API.)
     echo ">>> Pausing cluster-autoscaler"
     kubectl -n kube-system scale deploy \
-      -l app.kubernetes.io/name=aws-cluster-autoscaler --replicas=0 || true
+      -l app.kubernetes.io/name=aws-cluster-autoscaler --replicas=0 \
+      || echo "WARN: could not pause the autoscaler — it may scale nodes back up!"
     echo ">>> Scaling node groups to zero"
     scale general 0 1 0
     scale pipelines 0 1 0
@@ -53,7 +59,11 @@ case "$MODE" in
     scale pipelines 0 2 0
     echo ">>> Resuming cluster-autoscaler"
     kubectl -n kube-system scale deploy \
-      -l app.kubernetes.io/name=aws-cluster-autoscaler --replicas=1 || true
+      -l app.kubernetes.io/name=aws-cluster-autoscaler --replicas=1 \
+      || { echo "ERROR: autoscaler NOT resumed — without it, nothing scales"; \
+           echo "       (pipelines stays at zero, pending pods wait forever). Fix:"; \
+           echo "       kubectl -n kube-system scale deploy -l app.kubernetes.io/name=aws-cluster-autoscaler --replicas=1"; \
+           exit 1; }
     echo ">>> Pods will reschedule over the next ~5 minutes."
     echo "    If mysql/seaweedfs stay Pending (volume node affinity conflict):"
     echo "    fresh nodes all landed in one AZ while their EBS volumes live in the"

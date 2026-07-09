@@ -645,8 +645,12 @@ instance you later restart:
 
 Mechanically, `off` pauses the cluster-autoscaler first (otherwise it would
 immediately scale back up for the pending Airflow pods), then sets both node
-groups to `min=0, desired=0`. A later `terraform apply` also acts as "on"
-(it restores `min_size`; `desired_size` is lifecycle-ignored).
+groups to `min=0, desired=0`. **Resume with `make start`, not `terraform
+apply`**: apply does bring nodes back (it restores `min_size`), but it knows
+nothing about the paused autoscaler deployment — you'd get a cluster where
+nothing ever scales (pipelines stuck at zero, pending pods forever). The
+script now targets the right kube context itself and fails loudly if the
+autoscaler can't be resumed.
 
 **After `on`: if `mysql`/`seaweedfs` stay Pending and KFP crash-loops.** EBS
 volumes are AZ-bound, and this VPC spans two AZs — if the fresh spot nodes

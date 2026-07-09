@@ -1,7 +1,7 @@
 # Convenience wrapper — every target is also runnable by hand (see README).
 TF := terraform -chdir=terraform
 
-.PHONY: init plan apply kubeconfig kfp deploy pipeline pf stop start destroy orphans
+.PHONY: init plan apply kubeconfig kfp deploy pipeline pf stop start destroy orphans volumes inventory
 
 init:        ## terraform init
 	$(TF) init
@@ -37,3 +37,14 @@ destroy:     ## ordered teardown + orphan report
 
 orphans:     ## list (not delete) leaked billable resources
 	./scripts/cleanup-orphans.sh
+
+volumes:     ## EBS volumes provisioned by the cluster's CSI driver (PVC-backed — these bill while parked)
+	aws ec2 describe-volumes --region "$$($(TF) output -raw region)" \
+	  --filters "Name=tag:kubernetes.io/cluster/$$($(TF) output -raw cluster_name),Values=owned" \
+	  --query 'Volumes[].{ID:VolumeId,GiB:Size,Type:VolumeType,State:State,PVC:Tags[?Key==`kubernetes.io/created-for/pvc/name`]|[0].Value}' \
+	  --output table
+
+inventory:   ## every AWS resource carrying the Terraform default Project tag (CSI volumes NOT included — see 'volumes')
+	aws resourcegroupstaggingapi get-resources --region "$$($(TF) output -raw region)" \
+	  --tag-filters Key=Project,Values=eks-airflow-kubeflow-demo \
+	  --query 'ResourceTagMappingList[].ResourceARN' --output table

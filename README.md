@@ -761,7 +761,7 @@ before exposing anything.
 ```
 eks-airflow-kubeflow-demo/
 ├── README.md
-├── Makefile                          # deploy / pf / stop / start / destroy
+├── Makefile                          # deploy / pf / stop / start / destroy / volumes / inventory
 ├── dags/
 │   ├── etl_simple.py                 # DAG 1: extract→transform→load→S3 (IRSA)
 │   └── trigger_kubeflow_pipeline.py  # DAG 2: submit KFP run, wait, verify S3

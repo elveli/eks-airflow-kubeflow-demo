@@ -1,7 +1,7 @@
 # Convenience wrapper — every target is also runnable by hand (see README).
 TF := terraform -chdir=terraform
 
-.PHONY: init plan apply kubeconfig kfp deploy pipeline pf stop start destroy orphans volumes inventory nodegroups pods s3 dags workflows sidecars pdbs force-drain
+.PHONY: init plan apply kubeconfig kfp deploy pipeline pf stop start destroy orphans volumes inventory nodegroups pods s3 dags workflows sidecars pdbs force-drain irsa
 
 init:        ## terraform init
 	$(TF) init
@@ -76,6 +76,16 @@ pdbs:        ## PodDisruptionBudgets + draining nodes — ALLOWED DISRUPTIONS 0 
 
 force-drain: ## unstick PDB-blocked node drains: delete non-DaemonSet pods on cordoned nodes (bypasses PDBs)
 	@./scripts/force-drain.sh
+
+irsa:        ## service accounts annotated with IAM roles — the cluster's entire AWS-access wiring
+	@{ echo "NAMESPACE SERVICEACCOUNT IAM_ROLE"; \
+	kubectl get sa -A -o json | jq -r '.items[] \
+	  | select(.metadata.annotations["eks.amazonaws.com/role-arn"]) \
+	  | .metadata.namespace + " " + .metadata.name + " " \
+	    + (.metadata.annotations["eks.amazonaws.com/role-arn"] | sub(".*role/"; ""))'; } | column -t
+	@echo ""
+	@echo "(pods using an unlisted SA have NO AWS access — e.g. a missing kubeflow/pipeline-runner"
+	@echo " row means deploy-kfp.sh's annotation step didn't run and pipelines can't reach S3)"
 
 sidecars:    ## pods with >1 container: sidecars + init containers by name (see README: "Sidecars")
 	@kubectl get pods -A -o json | jq -r '.items[] \

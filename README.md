@@ -625,6 +625,15 @@ immediately scale back up for the pending Airflow pods), then sets both node
 groups to `min=0, desired=0`. A later `terraform apply` also acts as "on"
 (it restores `min_size`; `desired_size` is lifecycle-ignored).
 
+**Expect the last node to linger ~10–20 min.** The final drain gets blocked
+by the PodDisruptionBudgets of `coredns` / `ebs-csi-controller`: their other
+replica is already down (Pending), so the budget allows zero further
+disruptions and the eviction API politely refuses — until EKS's drain times
+out and force-terminates. Harmless (a few cents), just don't be surprised
+that `kubectl get nodes` shows one `Ready,SchedulingDisabled` node for a
+while. To hurry it: `kubectl -n kube-system delete pod <the blocked pods>` —
+direct deletion bypasses PDBs (they only gate evictions).
+
 ## Teardown
 
 ```bash

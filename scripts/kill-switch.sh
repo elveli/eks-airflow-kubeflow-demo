@@ -55,6 +55,9 @@ case "$MODE" in
     kubectl -n kube-system scale deploy \
       -l app.kubernetes.io/name=aws-cluster-autoscaler --replicas=1 || true
     echo ">>> Pods will reschedule over the next ~5 minutes."
+    echo "    If mysql/seaweedfs stay Pending (volume node affinity conflict):"
+    echo "    fresh nodes all landed in one AZ while their EBS volumes live in the"
+    echo "    other — see README 'Cost kill switch' section for the one-line fix."
     ;;
   *)
     echo "usage: $0 on|off" >&2

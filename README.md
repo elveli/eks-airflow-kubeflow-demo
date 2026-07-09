@@ -647,6 +647,24 @@ immediately scale back up for the pending Airflow pods), then sets both node
 groups to `min=0, desired=0`. A later `terraform apply` also acts as "on"
 (it restores `min_size`; `desired_size` is lifecycle-ignored).
 
+**After `on`: if `mysql`/`seaweedfs` stay Pending and KFP crash-loops.** EBS
+volumes are AZ-bound, and this VPC spans two AZs — if both fresh spot nodes
+happen to boot in one AZ while a PVC's volume lives in the other, that pod
+can't schedule (`volume node affinity conflict`), and everything downstream
+of it crash-loops (`metadata-grpc` exit 139, `ml-pipeline` restarts — all
+just "MySQL unreachable"). The autoscaler can't help: the group is already
+at `max`. Fix by terminating the *emptier* node so the ASG replaces it,
+preferring the underrepresented AZ:
+
+```bash
+aws autoscaling terminate-instance-in-auto-scaling-group \
+  --region <region> --instance-id <id-of-empty-node> \
+  --no-should-decrement-desired-capacity
+```
+
+(`make pods` shows which node is empty; node AZs:
+`kubectl get nodes -L topology.kubernetes.io/zone`.)
+
 **Expect the last node to linger ~10–20 min.** The final drain gets blocked
 by the PodDisruptionBudgets of `coredns` / `ebs-csi-controller`: their other
 replica is already down (Pending), so the budget allows zero further

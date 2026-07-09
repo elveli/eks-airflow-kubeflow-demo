@@ -274,8 +274,8 @@ Or with make: `make deploy` then `make pf`.
 | `make stop` | 🔴 Kill switch OFF — node groups to zero, nodes **terminated**, state kept (≈ $2.50/day) | End of a demo day |
 | `make start` | Kill switch ON — fresh nodes, pods reschedule (~5 min) | Start of the next demo day |
 | `make pods` | `kubectl get pods -A -o wide` — every pod + which node it's on | Quickest health check; compare against ["What a healthy system looks like"](#what-a-healthy-system-looks-like) |
-| `make nodegroups` | Node groups as a table: capacity type, instance types, min/desired/max | Sanity check after `stop`/`start`, spot debugging |
-| `make volumes` | EBS volumes created by the CSI driver (the PVCs that bill while parked) | Cost check while parked; leak check anytime |
+| `make nodegroups` | Node groups (scaling, eligible AZs) + live nodes with their actual AZ | Sanity check after `stop`/`start`; AZ-mismatch debugging |
+| `make volumes` | CSI-provisioned EBS volumes with AZ (the PVCs that bill while parked) | Cost check while parked; AZ-mismatch debugging; leak check |
 | `make inventory` | Every AWS resource carrying the Terraform `Project` tag | "What exists right now?" audit |
 | `make orphans` | Dry-run leak report: EBS/ELB/SG/log-group leftovers | After `destroy`, or paranoia anytime |
 | `make destroy` | Ordered teardown: LB services → app namespaces (PVCs!) → `terraform destroy` → orphan report | The end |
@@ -648,22 +648,29 @@ groups to `min=0, desired=0`. A later `terraform apply` also acts as "on"
 (it restores `min_size`; `desired_size` is lifecycle-ignored).
 
 **After `on`: if `mysql`/`seaweedfs` stay Pending and KFP crash-loops.** EBS
-volumes are AZ-bound, and this VPC spans two AZs — if both fresh spot nodes
-happen to boot in one AZ while a PVC's volume lives in the other, that pod
-can't schedule (`volume node affinity conflict`), and everything downstream
-of it crash-loops (`metadata-grpc` exit 139, `ml-pipeline` restarts — all
-just "MySQL unreachable"). The autoscaler can't help: the group is already
-at `max`. Fix by terminating the *emptier* node so the ASG replaces it,
-preferring the underrepresented AZ:
+volumes are AZ-bound, and this VPC spans two AZs — if the fresh spot nodes
+all boot in one AZ while a PVC's volume lives in the other, that pod can't
+schedule (`volume node affinity conflict`), and everything downstream of it
+crash-loops (`metadata-grpc` exit 139, `ml-pipeline` restarts — all just
+"MySQL unreachable"). Diagnose in one glance: `make volumes` (volume AZs) vs
+`make nodegroups` (live node AZs).
+
+Don't bother fighting the spot market for a node in the "right" AZ —
+spot allocation is capacity-optimized and happily ignores AZ balance (in
+one real incident, three consecutive launches all landed in the same AZ).
+The reliable fix exploits `WaitForFirstConsumer`: recreate the stranded
+PVCs and their replacement volumes provision **in whatever AZ the pod
+schedules**. The KFP stores hold only disposable run metadata (your models
+are in S3; Airflow's DB is a different PVC):
 
 ```bash
-aws autoscaling terminate-instance-in-auto-scaling-group \
-  --region <region> --instance-id <id-of-empty-node> \
-  --no-should-decrement-desired-capacity
+kubectl -n kubeflow delete pvc mysql-pv-claim seaweedfs-pvc   # stranded volumes get reaped
+./scripts/deploy-kfp.sh                                       # idempotent — recreates the PVCs
+kubectl -n kubeflow delete pod -l 'app in (mysql, seaweedfs)'  # reschedule → volumes provision in the nodes' AZ
 ```
 
-(`make pods` shows which node is empty; node AZs:
-`kubectl get nodes -L topology.kubernetes.io/zone`.)
+Cost of this route: KFP's *run history* resets (the UI forgets old runs).
+Everything durable — models, metrics, Airflow history — is unaffected.
 
 **Expect the last node to linger ~10–20 min.** The final drain gets blocked
 by the PodDisruptionBudgets of `coredns` / `ebs-csi-controller`: their other

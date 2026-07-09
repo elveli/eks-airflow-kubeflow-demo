@@ -30,6 +30,7 @@ zero nodes at
 - [💸 Cost estimate](#-cost-estimate)
 - [Prerequisites](#prerequisites)
 - [Deploy](#deploy)
+  - [All make targets](#all-make-targets)
   - [Run the demo](#run-the-demo)
   - [Container images: what gets pulled, and from where](#container-images-what-gets-pulled-and-from-where)
   - [Manual steps, called out honestly](#manual-steps-called-out-honestly)
@@ -257,6 +258,26 @@ cd .. && ./scripts/deploy-kfp.sh
 ```
 
 Or with make: `make deploy` then `make pf`.
+
+### All make targets
+
+| Target | What it does | When you'd use it |
+|---|---|---|
+| `make init` | `terraform init` (providers, modules) | Once, before the first plan/apply |
+| `make plan` | `terraform plan` | Preview changes before applying |
+| `make apply` | Provision/patch everything: VPC, EKS, IRSA, S3, addons, Airflow (~20 min first time) | Initial deploy and after any `.tf`/values change |
+| `make kubeconfig` | Point `kubectl` at the cluster | After first apply, or when switching kube contexts |
+| `make kfp` | Install Kubeflow Pipelines standalone + IRSA annotation (idempotent) | After first apply; re-run freely |
+| `make deploy` | `apply` → `kubeconfig` → `kfp`, the whole thing | The one-command full deployment |
+| `make pipeline` | Recompile `pipelines/sklearn_pipeline.yaml` from source (needs Python ≤ 3.12) | Only after editing the KFP pipeline code |
+| `make pf` | Port-forward both UIs (Airflow :8080, KFP :8081), Ctrl-C to stop | Every demo session |
+| `make stop` | 🔴 Kill switch OFF — node groups to zero, nodes **terminated**, state kept (≈ $2.50/day) | End of a demo day |
+| `make start` | Kill switch ON — fresh nodes, pods reschedule (~5 min) | Start of the next demo day |
+| `make nodegroups` | Node groups as a table: capacity type, instance types, min/desired/max | Sanity check after `stop`/`start`, spot debugging |
+| `make volumes` | EBS volumes created by the CSI driver (the PVCs that bill while parked) | Cost check while parked; leak check anytime |
+| `make inventory` | Every AWS resource carrying the Terraform `Project` tag | "What exists right now?" audit |
+| `make orphans` | Dry-run leak report: EBS/ELB/SG/log-group leftovers | After `destroy`, or paranoia anytime |
+| `make destroy` | Ordered teardown: LB services → app namespaces (PVCs!) → `terraform destroy` → orphan report | The end |
 
 ### Run the demo
 

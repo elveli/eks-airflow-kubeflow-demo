@@ -130,6 +130,10 @@ def sklearn_iris_pipeline(
         # nodes even if the selector were removed — we want the autoscaler
         # to bring up a t3.xlarge from zero.
         task.set_cpu_request("1").set_memory_request("2Gi")
+        # SPOT nodes get reclaimed mid-run (observed: node died 2 min after
+        # birth, step errored with "pod deleted"). Retrying the step on the
+        # replacement node turns that from a failed run into a hiccup.
+        task.set_retry(num_retries=2, backoff_duration="30s")
         # Pin to the scale-from-zero 'pipelines' node group...
         kubernetes.add_node_selector(task, label_key="workload", label_value="pipelines")
         # ...and tolerate its taint (drop this line + the taint via

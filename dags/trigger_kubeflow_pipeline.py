@@ -46,6 +46,10 @@ def train_on_kubeflow():
         requirements=["kfp==2.7.0"],
         system_site_packages=False,
         execution_timeout=timedelta(minutes=75),
+        # A whole KFP run can still die (e.g. spot reclaim faster than the
+        # in-pipeline step retries) — resubmit once before giving up.
+        retries=1,
+        retry_delay=timedelta(minutes=2),
     )
     def submit_kfp_run(host: str, package_path: str, s3_bucket: str) -> str:
         """Submit the compiled pipeline and wait for it to succeed.

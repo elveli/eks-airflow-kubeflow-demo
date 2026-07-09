@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # -----------------------------------------------------------------------------
-# COST KILL SWITCH — park the cluster without destroying anything.
+# COST KILL SWITCH — scale to zero nodes without destroying anything.
+# NOTE: 'off' TERMINATES the worker EC2 instances (nothing resumable is kept
+# at the EC2 level); state survives on the control plane + EBS volumes.
 #
 #   ./scripts/kill-switch.sh off   → scale BOTH node groups to zero
 #   ./scripts/kill-switch.sh on    → restore normal scaling
@@ -40,7 +42,10 @@ case "$MODE" in
     echo ">>> Scaling node groups to zero"
     scale general 0 1 0
     scale pipelines 0 1 0
-    echo ">>> Parked. Burn rate ≈ \$0.105/h (control plane + PVC storage)."
+    echo ">>> Scaled to zero: worker EC2 instances are TERMINATING (not 'stopped')."
+    echo "    State survives on the control plane + EBS volumes; pods stay Pending."
+    echo "    Still billing ≈ \$0.105/h (control plane + PVC storage) ≈ \$2.50/day."
+    echo "    Resume: ./scripts/kill-switch.sh on   (fresh nodes, ~5 min)"
     ;;
   on)
     echo ">>> Restoring node groups"

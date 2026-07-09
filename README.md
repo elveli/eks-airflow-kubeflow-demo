@@ -18,7 +18,8 @@ Naming notes, so nothing reads like line noise:
 
 Everything is tuned for **minimum burn rate**, not production resilience:
 SPOT nodes, no NAT gateway, no RDS, no load balancers, a scale-from-zero node
-group for ML workloads, and a kill switch that parks the whole cluster at
+group for ML workloads, and a kill switch that scales the whole cluster to
+zero nodes at
 ~$2.50/day.
 
 ## Contents
@@ -35,7 +36,7 @@ group for ML workloads, and a kill switch that parks the whole cluster at
   - [Inspecting the Helm releases from the CLI](#inspecting-the-helm-releases-from-the-cli)
   - [What a healthy system looks like](#what-a-healthy-system-looks-like)
   - [Sidecars: why READY says 3/3](#sidecars-why-ready-says-33)
-- [🔴 Cost kill switch (park it, don't destroy it)](#-cost-kill-switch-park-it-dont-destroy-it)
+- [🔴 Cost kill switch (scale to zero — not destroyed, not free)](#-cost-kill-switch-scale-to-zero--not-destroyed-not-free)
 - [Teardown](#teardown)
   - [Resources that can leak and keep billing](#resources-that-can-leak-and-keep-billing)
 - [Design decisions & tradeoffs](#design-decisions--tradeoffs)
@@ -593,7 +594,7 @@ Handy to know:
 
 ---
 
-## 🔴 Cost kill switch (park it, don't destroy it)
+## 🔴 Cost kill switch (scale to zero — not destroyed, not free)
 
 Not demoing today? Scale every node group to zero and keep all state:
 
@@ -602,11 +603,27 @@ Not demoing today? Scale every node group to zero and keep all state:
 ./scripts/kill-switch.sh on     # pods reschedule in ~5 min, state intact
 ```
 
-`off` pauses the cluster-autoscaler first (otherwise it would immediately
-scale back up for the pending Airflow pods), then sets both node groups to
-`min=0, desired=0`. The Airflow DB and KFP MySQL/seaweedfs PVCs persist, so
-DAG history and pipeline runs survive. A later `terraform apply` also acts
-as "on" (it restores `min_size`; `desired_size` is lifecycle-ignored).
+Be precise about what "off" means — it is **not** like stopping an EC2
+instance you later restart:
+
+* The worker **EC2 instances are terminated**, not "stopped". `kubectl get
+  nodes` goes empty; every pod sits `Pending` indefinitely. Turning back
+  "on" boots *fresh* spot instances (empty image caches — first pods take a
+  couple of minutes to re-pull).
+* **State survives anyway**, because none of it lived on the nodes: the
+  control plane keeps all Kubernetes objects, and the Airflow DB + KFP
+  MySQL/seaweedfs data live on PVC-backed EBS volumes that persist. DAG
+  history, pipeline runs, and everything in S3 come back exactly as left.
+* **It is not $0.** You still pay for the control plane ($0.10/h), the PVC
+  volumes (~$0.005/h) and S3 — ≈ **$2.50/day**. Zero-cost requires
+  `terraform destroy`.
+* `kubectl` keeps working throughout (it talks to the AWS-managed control
+  plane, not to your nodes) — that's also how "on" is able to rescale.
+
+Mechanically, `off` pauses the cluster-autoscaler first (otherwise it would
+immediately scale back up for the pending Airflow pods), then sets both node
+groups to `min=0, desired=0`. A later `terraform apply` also acts as "on"
+(it restores `min_size`; `desired_size` is lifecycle-ignored).
 
 ## Teardown
 
@@ -746,7 +763,7 @@ eks-airflow-kubeflow-demo/
 ├── scripts/
 │   ├── deploy-kfp.sh                 # KFP standalone install + IRSA annotation
 │   ├── port-forward.sh               # both UIs, no load balancers
-│   ├── kill-switch.sh                # on|off — park nodes at zero
+│   ├── kill-switch.sh                # on|off — scale node groups to zero (nodes terminated, state kept)
 │   ├── teardown.sh                   # ordered destroy (PVCs → ELBs → terraform)
 │   └── cleanup-orphans.sh            # post-destroy billing-leak audit [--delete]
 └── terraform/

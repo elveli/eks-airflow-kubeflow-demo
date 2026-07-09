@@ -1,7 +1,7 @@
 # Convenience wrapper — every target is also runnable by hand (see README).
 TF := terraform -chdir=terraform
 
-.PHONY: init plan apply kubeconfig kfp deploy pipeline pf stop start destroy orphans volumes inventory nodegroups
+.PHONY: init plan apply kubeconfig kfp deploy pipeline pf stop start destroy orphans volumes inventory nodegroups pods
 
 init:        ## terraform init
 	$(TF) init
@@ -48,6 +48,9 @@ inventory:   ## every AWS resource carrying the Terraform default Project tag (C
 	aws resourcegroupstaggingapi get-resources --region "$$($(TF) output -raw region)" \
 	  --tag-filters Key=Project,Values=eks-airflow-kubeflow-demo \
 	  --query 'ResourceTagMappingList[].ResourceARN' --output table
+
+pods:        ## every pod in the cluster, with the node it runs on (see README: "What a healthy system looks like")
+	kubectl get pods -A -o wide
 
 nodegroups:  ## node groups with capacity type and scaling (min/desired/max) as one table
 	@{ echo "NAME STATUS CAPACITY TYPES MIN DESIRED MAX"; \

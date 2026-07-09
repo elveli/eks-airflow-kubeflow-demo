@@ -273,6 +273,7 @@ Or with make: `make deploy` then `make pf`.
 | `make pf` | Port-forward both UIs (Airflow :8080, KFP :8081), Ctrl-C to stop | Every demo session |
 | `make stop` | 🔴 Kill switch OFF — node groups to zero, nodes **terminated**, state kept (≈ $2.50/day) | End of a demo day |
 | `make start` | Kill switch ON — fresh nodes, pods reschedule (~5 min) | Start of the next demo day |
+| `make pods` | `kubectl get pods -A -o wide` — every pod + which node it's on | Quickest health check; compare against ["What a healthy system looks like"](#what-a-healthy-system-looks-like) |
 | `make nodegroups` | Node groups as a table: capacity type, instance types, min/desired/max | Sanity check after `stop`/`start`, spot debugging |
 | `make volumes` | EBS volumes created by the CSI driver (the PVCs that bill while parked) | Cost check while parked; leak check anytime |
 | `make inventory` | Every AWS resource carrying the Terraform `Project` tag | "What exists right now?" audit |

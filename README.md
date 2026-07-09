@@ -37,6 +37,7 @@ zero nodes at
   - [Inspecting the Helm releases from the CLI](#inspecting-the-helm-releases-from-the-cli)
   - [What a healthy system looks like](#what-a-healthy-system-looks-like)
   - [Sidecars: why READY says 3/3](#sidecars-why-ready-says-33)
+  - [Annotations this stack assigns](#annotations-this-stack-assigns)
 - [🔴 Cost kill switch (scale to zero — not destroyed, not free)](#-cost-kill-switch-scale-to-zero--not-destroyed-not-free)
 - [Teardown](#teardown)
   - [Resources that can leak and keep billing](#resources-that-can-leak-and-keep-billing)
@@ -630,6 +631,64 @@ Handy to know:
   run-before cousins of sidecars — and since Kubernetes 1.28, *native*
   sidecars are implemented as init containers with `restartPolicy: Always`,
   so a chart's git-sync may live in either list.
+
+### Annotations this stack assigns
+
+This repo writes exactly **two families** of Kubernetes annotations — if you
+find any other annotation on these objects, some tool wrote it, not us.
+
+**1. IRSA wiring: `eks.amazonaws.com/role-arn` on service accounts.** The
+annotation is the *entire* contract that gives a pod AWS credentials (EKS's
+webhook sees it and injects a web-identity token; boto3's default chain does
+the rest). Seven service accounts carry it, assigned through four different
+mechanisms — same annotation, four front doors:
+
+| Mechanism | Where in this repo | Annotates |
+|---|---|---|
+| Helm values template | `modules/addons/values/airflow-values.yaml.tpl` | `airflow-scheduler`, `airflow-webserver`, `airflow-worker` |
+| Helm `set` blocks | `modules/addons/main.tf` | `cluster-autoscaler`, `aws-load-balancer-controller` |
+| EKS addon parameter | `aws_eks_addon.ebs_csi.service_account_role_arn` | `ebs-csi-controller-sa` (AWS writes the annotation) |
+| Imperative `kubectl annotate` | `scripts/deploy-kfp.sh` | `pipeline-runner` (the SA doesn't exist until the manifests apply) |
+
+Audit the live wiring anytime with `make irsa`; healthy output:
+
+```
+NAMESPACE    SERVICEACCOUNT                IAM_ROLE
+airflow      airflow-scheduler             afkf-demo-eks-airflow
+airflow      airflow-webserver             afkf-demo-eks-airflow
+airflow      airflow-worker                afkf-demo-eks-airflow
+kube-system  aws-load-balancer-controller  afkf-demo-eks-alb-controller
+kube-system  cluster-autoscaler            afkf-demo-eks-cluster-autoscaler
+kube-system  ebs-csi-controller-sa         afkf-demo-eks-ebs-csi
+kubeflow     pipeline-runner               afkf-demo-eks-kfp
+```
+
+A missing row = that workload has **no** AWS access (most commonly
+`pipeline-runner`, if `deploy-kfp.sh`'s annotate step didn't run — symptom:
+pipelines fail at the S3 upload step with `NoCredentialsError`).
+
+**2. The default-StorageClass election:
+`storageclass.kubernetes.io/is-default-class`.** Not access wiring — a
+cluster-wide election marker. Every PVC created without an explicit
+`storageClassName` (Airflow's Postgres, KFP's mysql/seaweedfs — all of them)
+gets whichever StorageClass holds `"true"`. EKS ships `gp2` as the incumbent,
+so `modules/addons/main.tf` does a two-step handover: demote `gp2`
+(`kubernetes_annotations` with `force = true`, because EKS owns that field
+and Terraform must take it over) and crown `gp3`. Skipping the demotion
+leaves *two* defaults, which newer Kubernetes rejects at PVC-creation time.
+No make target needed — kubectl shows the election natively:
+
+```
+$ kubectl get storageclass
+NAME            PROVISIONER             ...
+gp2             kubernetes.io/aws-ebs
+gp3 (default)   ebs.csi.aws.com         ← the "(default)" marker IS the annotation
+```
+
+Everything else you'll see in `kubectl describe` output —
+`meta.helm.sh/release-name`, `cluster-autoscaler.kubernetes.io/safe-to-evict`,
+`workflows.argoproj.io/*`, `kubectl.kubernetes.io/default-container` — is
+tooling bookkeeping written by Helm, KFP, or Argo, not by this repo.
 
 ---
 

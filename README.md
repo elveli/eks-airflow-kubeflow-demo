@@ -287,6 +287,7 @@ Or with make: `make deploy` then `make pf`.
 | `make dags` | Airflow DAGs (paused state) + each one's 3 most recent runs with durations | Run history without opening the UI |
 | `make workflows` | KFP runs as Argo Workflow objects, oldest first | Pipeline run states without the UI; pairs with `make dags` |
 | `make sidecars` | Pods with >1 container: sidecar + init container names | Decode the READY column; find `-c` targets for logs/exec |
+| `make iam` | Project IAM roles: trusted principals + policies | AWS-side mirror of `irsa`; verify trust/policy wiring |
 | `make pdbs` | PodDisruptionBudgets + any draining nodes + zero-budget PDBs | Watch `make stop` shutdowns; explains the lingering last node |
 | `make force-drain` | Delete non-DaemonSet pods on cordoned nodes (bypasses PDBs) | When `make pdbs` shows a drain stuck on zero-budget PDBs |
 | `make nodegroups` | Node groups (scaling, eligible AZs, created) + live nodes with AZ, instance ID, join time | Sanity check after `stop`/`start`; AZ-mismatch debugging |

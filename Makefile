@@ -1,7 +1,7 @@
 # Convenience wrapper — every target is also runnable by hand (see README).
 TF := terraform -chdir=terraform
 
-.PHONY: init plan apply kubeconfig kfp deploy pipeline pf stop start destroy orphans volumes inventory nodegroups pods s3 dags workflows sidecars pdbs force-drain irsa
+.PHONY: init plan apply kubeconfig kfp deploy pipeline pf stop start destroy orphans volumes inventory nodegroups pods s3 dags workflows sidecars pdbs force-drain irsa iam
 
 init:        ## terraform init
 	$(TF) init
@@ -76,6 +76,9 @@ pdbs:        ## PodDisruptionBudgets + draining nodes — ALLOWED DISRUPTIONS 0 
 
 force-drain: ## unstick PDB-blocked node drains: delete non-DaemonSet pods on cordoned nodes (bypasses PDBs)
 	@./scripts/force-drain.sh
+
+iam:         ## project IAM roles: trusted principals + attached policies (AWS-side mirror of 'irsa')
+	@./scripts/iam-roles.sh
 
 irsa:        ## service accounts annotated with IAM roles — the cluster's entire AWS-access wiring
 	@{ echo "NAMESPACE SERVICEACCOUNT IAM_ROLE"; \

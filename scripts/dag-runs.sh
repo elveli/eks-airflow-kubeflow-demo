@@ -13,20 +13,27 @@ import datetime as dt
 import sys
 
 now = dt.datetime.now(dt.timezone.utc)
-for i, line in enumerate(sys.stdin):
+rows = []
+for i, line in enumerate(sys.stdin.read().splitlines()):
     parts = line.split()
     line = line.rstrip()
     if i == 0:
-        print(f"{line}  duration")
+        rows.append((line, "duration"))
         continue
     try:
         start = dt.datetime.fromisoformat(parts[4])
         running = len(parts) < 6
         end = now if running else dt.datetime.fromisoformat(parts[5])
         dur = str(end - start).split(".")[0]  # trim microseconds
-        print(f"{line}  {dur}{' (so far)' if running else ''}")
+        rows.append((line, f"{dur}{' (so far)' if running else ''}"))
     except (IndexError, ValueError):
-        print(line)
+        rows.append((line, ""))
+
+# Align the appended column: pad every line to the widest row first
+# (rstrip above removes the CLI's own header padding, so we re-derive it).
+width = max((len(l) for l, _ in rows), default=0)
+for line, dur in rows:
+    print(f"{line:<{width}}  {dur}".rstrip())
 EOF
 )
 

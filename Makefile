@@ -41,7 +41,7 @@ orphans:     ## list (not delete) leaked billable resources
 volumes:     ## EBS volumes provisioned by the cluster's CSI driver (PVC-backed — these bill while parked)
 	aws ec2 describe-volumes --region "$$($(TF) output -raw region)" \
 	  --filters "Name=tag:kubernetes.io/cluster/$$($(TF) output -raw cluster_name),Values=owned" \
-	  --query 'Volumes[].{ID:VolumeId,AZ:AvailabilityZone,GiB:Size,Type:VolumeType,State:State,PVC:Tags[?Key==`kubernetes.io/created-for/pvc/name`]|[0].Value}' \
+	  --query 'Volumes[].{ID:VolumeId,AZ:AvailabilityZone,GiB:Size,Type:VolumeType,State:State,Created:CreateTime,PVC:Tags[?Key==`kubernetes.io/created-for/pvc/name`]|[0].Value}' \
 	  --output table
 
 inventory:   ## every AWS resource carrying the Terraform default Project tag (CSI volumes NOT included — see 'volumes')
@@ -84,12 +84,12 @@ sidecars:    ## pods with >1 container: sidecars + init containers by name (see 
 	    + (if .spec.initContainers then "\n   init:       " + ([.spec.initContainers[].name] | join(", ")) else "" end)'
 
 nodegroups:  ## node groups (scaling, eligible AZs) + live nodes with their actual AZ
-	@{ echo "NAME STATUS CAPACITY TYPES MIN DESIRED MAX ELIGIBLE_AZS"; \
+	@{ echo "NAME STATUS CAPACITY TYPES MIN DESIRED MAX CREATED ELIGIBLE_AZS"; \
 	REGION="$$($(TF) output -raw region)"; CLUSTER="$$($(TF) output -raw cluster_name)"; \
 	aws eks list-nodegroups --region "$$REGION" --cluster-name "$$CLUSTER" \
 	    --query 'nodegroups[]' --output text | tr '\t' '\n' | while read -r ng; do \
 	  row="$$(aws eks describe-nodegroup --region "$$REGION" --cluster-name "$$CLUSTER" --nodegroup-name "$$ng" \
-	    --query 'nodegroup.[nodegroupName,status,capacityType,join(`,`,instanceTypes),scalingConfig.minSize,scalingConfig.desiredSize,scalingConfig.maxSize]' \
+	    --query 'nodegroup.[nodegroupName,status,capacityType,join(`,`,instanceTypes),scalingConfig.minSize,scalingConfig.desiredSize,scalingConfig.maxSize,createdAt]' \
 	    --output text)"; \
 	  subnets="$$(aws eks describe-nodegroup --region "$$REGION" --cluster-name "$$CLUSTER" --nodegroup-name "$$ng" \
 	    --query 'nodegroup.subnets' --output text)"; \
@@ -99,6 +99,6 @@ nodegroups:  ## node groups (scaling, eligible AZs) + live nodes with their actu
 	done; } | column -t
 	@echo ""
 	@echo "Live nodes (actual AZ — spot placement can pile into one AZ, see README):"
-	@kubectl get nodes -o custom-columns='NAME:.metadata.name,INSTANCE:.spec.providerID,ZONE:.metadata.labels.topology\.kubernetes\.io/zone,WORKLOAD:.metadata.labels.workload,READY:.status.conditions[-1].type' 2>/dev/null \
+	@kubectl get nodes -o custom-columns='NAME:.metadata.name,INSTANCE:.spec.providerID,ZONE:.metadata.labels.topology\.kubernetes\.io/zone,WORKLOAD:.metadata.labels.workload,JOINED:.metadata.creationTimestamp,READY:.status.conditions[-1].type' 2>/dev/null \
 	  | sed 's|aws:///[a-z0-9-]*/||' | column -t \
 	  || echo "  (cluster unreachable or zero nodes)"

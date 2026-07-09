@@ -288,8 +288,8 @@ Or with make: `make deploy` then `make pf`.
 | `make sidecars` | Pods with >1 container: sidecar + init container names | Decode the READY column; find `-c` targets for logs/exec |
 | `make pdbs` | PodDisruptionBudgets + any draining nodes + zero-budget PDBs | Watch `make stop` shutdowns; explains the lingering last node |
 | `make force-drain` | Delete non-DaemonSet pods on cordoned nodes (bypasses PDBs) | When `make pdbs` shows a drain stuck on zero-budget PDBs |
-| `make nodegroups` | Node groups (scaling, eligible AZs) + live nodes with their actual AZ | Sanity check after `stop`/`start`; AZ-mismatch debugging |
-| `make volumes` | CSI-provisioned EBS volumes with AZ (the PVCs that bill while parked) | Cost check while parked; AZ-mismatch debugging; leak check |
+| `make nodegroups` | Node groups (scaling, eligible AZs, created) + live nodes with AZ, instance ID, join time | Sanity check after `stop`/`start`; AZ-mismatch debugging |
+| `make volumes` | CSI-provisioned EBS volumes with AZ + creation time (the PVCs that bill while parked) | Cost check while parked; AZ-mismatch debugging; leak check |
 | `make inventory` | Every AWS resource carrying the Terraform `Project` tag | "What exists right now?" audit |
 | `make orphans` | Dry-run leak report: EBS/ELB/SG/log-group leftovers | After `destroy`, or paranoia anytime |
 | `make destroy` | Ordered teardown: LB services → app namespaces (PVCs!) → `terraform destroy` → orphan report | The end |

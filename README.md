@@ -285,6 +285,7 @@ Or with make: `make deploy` then `make pf`.
 | `make s3` | Recursive bucket listing with human sizes + object/size totals | Verify DAG/pipeline outputs landed; storage-cost sanity check |
 | `make dags` | Airflow DAGs (paused state) + each one's 3 most recent runs with durations | Run history without opening the UI |
 | `make workflows` | KFP runs as Argo Workflow objects, oldest first | Pipeline run states without the UI; pairs with `make dags` |
+| `make sidecars` | Pods with >1 container: sidecar + init container names | Decode the READY column; find `-c` targets for logs/exec |
 | `make nodegroups` | Node groups (scaling, eligible AZs) + live nodes with their actual AZ | Sanity check after `stop`/`start`; AZ-mismatch debugging |
 | `make volumes` | CSI-provisioned EBS volumes with AZ (the PVCs that bill while parked) | Cost check while parked; AZ-mismatch debugging; leak check |
 | `make inventory` | Every AWS resource carrying the Terraform `Project` tag | "What exists right now?" audit |
@@ -585,7 +586,8 @@ Sidecars aren't pods — they're extra containers *inside* a pod, which is what
 kubectl get pods -A -o custom-columns='NS:.metadata.namespace,POD:.metadata.name,CONTAINERS:.spec.containers[*].name'
 ```
 
-Or only the pods that actually have companions, init containers included:
+Or only the pods that actually have companions, init containers included
+(also available as `make sidecars`):
 
 ```bash
 kubectl get pods -A -o json | jq -r '.items[]

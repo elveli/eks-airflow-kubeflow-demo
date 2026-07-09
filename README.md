@@ -63,13 +63,13 @@ flowchart TB
         subgraph VPC["VPC 10.0.0.0/16 — public subnets, NO NAT gateway"]
             CP["EKS control plane v1.33\n$0.10/h"]
 
-            subgraph NG1["node group: general\nt3.large SPOT × 1-2"]
+            subgraph NG1["node group: general\nt3/m5.large SPOT × 1-2"]
                 AF["Airflow\nscheduler · webserver · Postgres (PVC)"]
-                KFPC["KFP control plane\nml-pipeline · UI · MySQL · seaweedfs (PVCs)"]
+                KFPC["KFP control plane\nml-pipeline · UI · Argo wf-controller\nMySQL · seaweedfs (PVCs)"]
                 SYS["cluster-autoscaler · ALB controller\nEBS CSI · metrics-server"]
             end
 
-            subgraph NG2["node group: pipelines\nt3.xlarge SPOT × 0-2 (scale from ZERO)"]
+            subgraph NG2["node group: pipelines\nt3/m5.xlarge SPOT × 0-2 (scale from ZERO)"]
                 EXEC["KFP executor pods\ntrain → evaluate+publish"]
             end
         end
@@ -84,12 +84,15 @@ flowchart TB
     EXEC -- "IRSA: model.joblib + metrics.json" --> S3
 ```
 
-**The demo flow:** trigger the `train_on_kubeflow` DAG in Airflow → an Airflow
-task pod submits `pipelines/sklearn_pipeline.yaml` to the KFP API and waits →
-KFP schedules executor pods pinned to the `pipelines` node group → the cluster
-autoscaler boots a t3.xlarge **from zero** → the pipeline trains/evaluates a
-RandomForest and uploads the model to S3 → the node scales back to zero ~2 min
-later → a final Airflow task lists the artifacts in S3.
+**The demo flow:** trigger the `etl_simple` DAG in Airflow → it writes its
+summary to S3 and emits a **Dataset event**, which auto-starts
+`train_on_kubeflow` (data-aware scheduling) → an Airflow task pod submits
+`pipelines/sklearn_pipeline.yaml` to the KFP API and waits → KFP (via its
+embedded Argo workflow-controller) schedules executor pods pinned to the
+`pipelines` node group → the cluster autoscaler boots a spot t3/m5.xlarge
+**from zero** → the pipeline trains/evaluates a RandomForest and uploads the
+model to S3 → the node scales back to zero ~2 min later → a final Airflow
+task verifies the artifacts in S3.
 
 ## What the files in `dags/` are, and why they exist
 

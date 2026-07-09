@@ -1,7 +1,7 @@
 # Convenience wrapper — every target is also runnable by hand (see README).
 TF := terraform -chdir=terraform
 
-.PHONY: init plan apply kubeconfig kfp deploy pipeline pf stop start destroy orphans volumes inventory nodegroups pods s3 dags workflows sidecars
+.PHONY: init plan apply kubeconfig kfp deploy pipeline pf stop start destroy orphans volumes inventory nodegroups pods s3 dags workflows sidecars pdbs
 
 init:        ## terraform init
 	$(TF) init
@@ -61,6 +61,17 @@ dags:        ## Airflow DAGs (paused state) + each one's 3 most recent runs with
 
 workflows:   ## KFP runs as Argo Workflow objects, oldest first (one per pipeline run)
 	kubectl -n kubeflow get workflows --sort-by=.metadata.creationTimestamp
+
+pdbs:        ## PodDisruptionBudgets + draining nodes — ALLOWED DISRUPTIONS 0 = drains stall there (kill-switch's lingering last node)
+	kubectl get pdb -A
+	@echo ""
+	@echo "Nodes currently draining (cordoned):"
+	@kubectl get nodes --no-headers 2>/dev/null | grep SchedulingDisabled \
+	  || echo "  none"
+	@echo ""
+	@echo "PDBs with zero budget right now (evictions of their pods will be refused):"
+	@kubectl get pdb -A --no-headers 2>/dev/null | awk '$$5 == 0 {print "  " $$1 "/" $$2}' \
+	  | grep . || echo "  none — drains can proceed"
 
 sidecars:    ## pods with >1 container: sidecars + init containers by name (see README: "Sidecars")
 	@kubectl get pods -A -o json | jq -r '.items[] \

@@ -1,7 +1,7 @@
 # Convenience wrapper — every target is also runnable by hand (see README).
 TF := terraform -chdir=terraform
 
-.PHONY: init plan apply kubeconfig kfp deploy pipeline pf stop start destroy orphans volumes inventory nodegroups pods s3 dags workflows sidecars pdbs force-drain irsa iam
+.PHONY: init plan apply kubeconfig kfp deploy pipeline pf stop start destroy orphans volumes inventory nodegroups pods s3 dags workflows sidecars pdbs force-drain irsa iam git-sync
 
 init:        ## terraform init
 	$(TF) init
@@ -59,6 +59,9 @@ s3:          ## everything in the demo bucket (task logs, ETL output, published 
 
 dags:        ## Airflow DAGs (paused state) + each one's 3 most recent runs with durations
 	@./scripts/dag-runs.sh
+
+git-sync:    ## did my DAG change reach Airflow? local vs GitHub vs cluster-synced commit
+	@./scripts/git-sync-status.sh
 
 workflows:   ## KFP runs as Argo Workflow objects, oldest first (one per pipeline run)
 	kubectl -n kubeflow get workflows --sort-by=.metadata.creationTimestamp

@@ -20,12 +20,17 @@ import os
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from airflow.datasets import Dataset
 from airflow.decorators import dag, task
 
 log = logging.getLogger(__name__)
 
 KFP_HOST = os.environ.get("DEMO_KFP_HOST", "http://ml-pipeline.kubeflow.svc.cluster.local:8888")
 S3_BUCKET = os.environ.get("DEMO_S3_BUCKET", "")
+
+# Must match the Dataset URI declared as an outlet in etl_simple.py —
+# Airflow links producer and consumer purely by this string.
+ETL_SUMMARY_DATASET = Dataset(f"s3://{S3_BUCKET}/etl/summary")
 
 # git-sync clones the whole repo; DAGs live in <clone>/dags, the compiled
 # pipeline next door in <clone>/pipelines.
@@ -35,7 +40,9 @@ PIPELINE_PACKAGE = str(Path(__file__).resolve().parent.parent / "pipelines" / "s
 @dag(
     dag_id="train_on_kubeflow",
     description="Submit the scikit-learn KFP pipeline and wait for completion",
-    schedule=None,  # trigger manually from the UI
+    # Data-aware scheduling: run whenever etl_simple's load task succeeds
+    # (it declares this dataset as an outlet). Manual ▶ still works too.
+    schedule=[ETL_SUMMARY_DATASET],
     start_date=datetime(2026, 1, 1),
     catchup=False,
     max_active_runs=1,

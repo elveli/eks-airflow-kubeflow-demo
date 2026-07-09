@@ -16,6 +16,7 @@ import os
 import random
 from datetime import datetime
 
+from airflow.datasets import Dataset
 from airflow.decorators import dag, task
 
 log = logging.getLogger(__name__)
@@ -23,6 +24,12 @@ log = logging.getLogger(__name__)
 S3_BUCKET = os.environ.get("DEMO_S3_BUCKET", "")
 
 CITIES = ["Helsinki", "Stockholm", "Copenhagen", "Oslo", "Reykjavik"]
+
+# Data-aware scheduling: the `load` task declares it UPDATES this dataset
+# (see outlets below). Airflow emits a dataset event on task success, which
+# triggers any DAG scheduled on it — train_on_kubeflow, in this demo. The
+# URI is an identifier, not a watched location: Airflow never polls S3.
+ETL_SUMMARY_DATASET = Dataset(f"s3://{S3_BUCKET}/etl/summary")
 
 
 @dag(
@@ -64,7 +71,7 @@ def etl_simple():
         log.info("Summary: %s", summary)
         return summary
 
-    @task
+    @task(outlets=[ETL_SUMMARY_DATASET])
     def load(summary: dict) -> str:
         """Write the summary to S3 (credentials come from IRSA)."""
         import boto3

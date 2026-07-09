@@ -140,8 +140,16 @@ The two files:
 
 | File | DAG in the UI | What it does | Why it's here |
 |---|---|---|---|
-| `dags/etl_simple.py` | `etl_simple` | Generates 1 000 fake order rows → aggregates revenue per city → writes `summary.json` to `s3://<bucket>/etl/<date>/` | Smoke test. Proves Airflow schedules task pods and that they can write to S3 **with no credentials configured** (IRSA). Run it first; it finishes in ~1 min. |
-| `dags/trigger_kubeflow_pipeline.py` | `train_on_kubeflow` | Submits the compiled KFP package (`pipelines/sklearn_pipeline.yaml`) to the in-cluster KFP API, waits for the run to succeed, then lists the model artifacts that landed in `s3://<bucket>/kfp-artifacts/` | The headline: Airflow *orchestrating* Kubeflow. The KFP SDK isn't baked into the Airflow image — the task pip-installs it in a throwaway virtualenv at runtime. |
+| `dags/etl_simple.py` | `etl_simple` | Generates 1 000 fake order rows → aggregates revenue per city → writes `summary.json` to `s3://<bucket>/etl/<date>/`, then emits a **Dataset event** (its `load` task declares the summary as an `outlet`) | Smoke test + the trigger for the whole chain. Proves Airflow schedules task pods and that they write to S3 **with no credentials configured** (IRSA). ~1 min. |
+| `dags/trigger_kubeflow_pipeline.py` | `train_on_kubeflow` | Submits the compiled KFP package (`pipelines/sklearn_pipeline.yaml`) to the in-cluster KFP API, waits for the run to succeed, then lists the model artifacts that landed in `s3://<bucket>/kfp-artifacts/` | The headline: Airflow *orchestrating* Kubeflow. **Runs automatically whenever `etl_simple` succeeds** (data-aware scheduling — it's `schedule`d on the ETL's Dataset); manual ▶ works too. The KFP SDK isn't baked into the Airflow image — the task pip-installs it in a throwaway virtualenv at runtime. |
+
+The producer/consumer link is Airflow's **data-aware scheduling**: the ETL's
+`load` task declares `outlets=[Dataset("s3://<bucket>/etl/summary")]`, and the
+training DAG uses that same Dataset as its `schedule`. On `load`'s success,
+Airflow emits a dataset event and queues the training run — "fresh data landed
+→ retrain" with no cron and no manual step. The graph and event feed are on
+the Airflow UI's **Datasets** page. (The URI is just an identifier — Airflow
+never polls S3; the event fires because the task succeeded.)
 
 Related but different: the `pipelines/` folder is **not** Airflow code — it's
 the Kubeflow pipeline (`sklearn_pipeline.py` source → compiled
@@ -285,21 +293,23 @@ Or with make: `make deploy` then `make pf`.
 
 ### Run the demo
 
-**Step 1 — smoke test with the ETL DAG (~1 min).**
+**Step 1 — unpause both DAGs, then trigger the ETL (~1 min).**
 Open the Airflow UI at http://localhost:8080 (admin / admin). On the DAGs
-page, find `etl_simple`, click its pause toggle to unpause it, then press the
-▶ (Trigger) button. Within a minute all three tasks should turn dark green
-(success). This proves the basics work: Airflow can launch task pods, and
-those pods can write to S3 without any credentials (IRSA). Verify the output
-landed:
+page, unpause **both** `etl_simple` and `train_on_kubeflow` (pause toggles),
+then press ▶ (Trigger) on `etl_simple` only. Within a minute its three tasks
+turn dark green — proving Airflow can launch task pods and that they write to
+S3 without any credentials (IRSA). Verify the output landed:
 
 ```bash
 aws s3 ls --recursive "s3://$(terraform -chdir=terraform output -raw s3_bucket)/etl/"
 ```
 
-**Step 2 — the main event: trigger `train_on_kubeflow`.**
-Unpause and trigger it the same way. Expect the **first run to take ~10
-minutes**, because three one-time things happen back to back:
+**Step 2 — the main event starts itself.**
+The moment `etl_simple` succeeds, its Dataset event **auto-triggers
+`train_on_kubeflow`** (data-aware scheduling — look for `dataset_triggered`
+in the run id, and see the Datasets page for the event). You can also ▶ it
+manually anytime. Expect the **first run to take ~10 minutes**, because
+three one-time things happen back to back:
 
 1. the Airflow task pod pip-installs the KFP SDK into a throwaway virtualenv (~2 min),
 2. the cluster autoscaler boots a spot t3.xlarge **from zero** for the pipeline pods (~3 min),

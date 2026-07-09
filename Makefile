@@ -39,10 +39,11 @@ orphans:     ## list (not delete) leaked billable resources
 	./scripts/cleanup-orphans.sh
 
 volumes:     ## EBS volumes provisioned by the cluster's CSI driver (PVC-backed — these bill while parked)
+	@{ echo "ID AZ GiB TYPE STATE CREATED PVC"; \
 	aws ec2 describe-volumes --region "$$($(TF) output -raw region)" \
 	  --filters "Name=tag:kubernetes.io/cluster/$$($(TF) output -raw cluster_name),Values=owned" \
-	  --query 'Volumes[].{ID:VolumeId,AZ:AvailabilityZone,GiB:Size,Type:VolumeType,State:State,Created:CreateTime,PVC:Tags[?Key==`kubernetes.io/created-for/pvc/name`]|[0].Value}' \
-	  --output table
+	  --query 'Volumes[].[VolumeId,AvailabilityZone,Size,VolumeType,State,CreateTime,Tags[?Key==`kubernetes.io/created-for/pvc/name`]|[0].Value]' \
+	  --output text; } | sed -E 's/(T[0-9]{2}:[0-9]{2})[^[:space:]]*/\1/g' | column -t
 
 inventory:   ## every AWS resource carrying the Terraform default Project tag (CSI volumes NOT included — see 'volumes')
 	aws resourcegroupstaggingapi get-resources --region "$$($(TF) output -raw region)" \
@@ -96,9 +97,9 @@ nodegroups:  ## node groups (scaling, eligible AZs) + live nodes with their actu
 	  azs="$$(aws ec2 describe-subnets --region "$$REGION" --subnet-ids $$subnets \
 	    --query 'Subnets[].AvailabilityZone' --output text | tr '\t' ',')"; \
 	  echo "$$row $$azs"; \
-	done; } | column -t
+	done; } | sed -E 's/(T[0-9]{2}:[0-9]{2})[^[:space:]]*/\1/g' | column -t
 	@echo ""
 	@echo "Live nodes (actual AZ — spot placement can pile into one AZ, see README):"
 	@kubectl get nodes -o custom-columns='NAME:.metadata.name,INSTANCE:.spec.providerID,ZONE:.metadata.labels.topology\.kubernetes\.io/zone,WORKLOAD:.metadata.labels.workload,JOINED:.metadata.creationTimestamp,READY:.status.conditions[-1].type' 2>/dev/null \
-	  | sed 's|aws:///[a-z0-9-]*/||' | column -t \
+	  | sed -E -e 's|aws:///[a-z0-9-]*/||' -e 's/(T[0-9]{2}:[0-9]{2})[^[:space:]]*/\1/g' | column -t \
 	  || echo "  (cluster unreachable or zero nodes)"

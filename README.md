@@ -299,6 +299,7 @@ Or with make: `make deploy` then `make pf`.
 | `make force-drain` | Delete non-DaemonSet pods on cordoned nodes (bypasses PDBs) | When `make pdbs` shows a drain stuck on zero-budget PDBs |
 | `make nodegroups` | Node groups (scaling, eligible AZs, created) + live nodes with AZ, instance ID, join time | Sanity check after `stop`/`start`; AZ-mismatch debugging |
 | `make volumes` | CSI-provisioned EBS volumes with AZ + creation time (the PVCs that bill while parked) | Cost check while parked; AZ-mismatch debugging; leak check |
+| `make pvc` | PVCs → bound volume's AZ, flagged `STRANDED` when no live node is in that AZ | One-glance AZ-mismatch detection (the `mysql` Pending incident); k8s mirror of `volumes` |
 | `make inventory` | Every AWS resource carrying the Terraform `Project` tag | "What exists right now?" audit |
 | `make orphans` | Dry-run leak report: EBS/ELB/SG/log-group leftovers | After `destroy`, or paranoia anytime |
 | `make destroy` | Ordered teardown: LB services → app namespaces (PVCs!) → `terraform destroy` → orphan report | The end |
@@ -741,8 +742,9 @@ volumes are AZ-bound, and this VPC spans two AZs — if the fresh spot nodes
 all boot in one AZ while a PVC's volume lives in the other, that pod can't
 schedule (`volume node affinity conflict`), and everything downstream of it
 crash-loops (`metadata-grpc` exit 139, `ml-pipeline` restarts — all just
-"MySQL unreachable"). Diagnose in one glance: `make volumes` (volume AZs) vs
-`make nodegroups` (live node AZs).
+"MySQL unreachable"). Diagnose in one glance: `make pvc` flags the stranded
+claim directly (`make volumes` vs `make nodegroups` is the AWS-side view of
+the same comparison).
 
 Don't bother fighting the spot market for a node in the "right" AZ —
 spot allocation is capacity-optimized and happily ignores AZ balance (in

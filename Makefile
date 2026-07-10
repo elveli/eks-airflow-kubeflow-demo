@@ -1,7 +1,7 @@
 # Convenience wrapper — every target is also runnable by hand (see README).
 TF := terraform -chdir=terraform
 
-.PHONY: init plan apply kubeconfig kfp deploy pipeline pf stop start destroy orphans volumes inventory nodegroups pods deployments images s3 dags workflows sidecars pdbs force-drain irsa iam git-sync
+.PHONY: init plan apply kubeconfig kfp deploy pipeline pf stop start destroy orphans volumes pvc inventory nodegroups pods deployments images s3 dags workflows sidecars pdbs force-drain irsa iam git-sync
 
 init:        ## terraform init
 	$(TF) init
@@ -51,6 +51,9 @@ volumes:     ## EBS volumes provisioned by the cluster's CSI driver (PVC-backed 
 	  --filters "Name=tag:kubernetes.io/cluster/$$($(TF) output -raw cluster_name),Values=owned" \
 	  --query 'Volumes[].[VolumeId,AvailabilityZone,Size,VolumeType,State,CreateTime,Tags[?Key==`kubernetes.io/created-for/pvc/name`]|[0].Value]' \
 	  --output text; } | sed -E 's/(T[0-9]{2}:[0-9]{2})[^[:space:]]*/\1/g' | column -t
+
+pvc:         ## PVCs → bound volume's AZ, flagged STRANDED when no live node is there (k8s mirror of 'volumes')
+	@./scripts/pvc-status.sh
 
 inventory:   ## every AWS resource carrying the Terraform default Project tag (CSI volumes NOT included — see 'volumes')
 	aws resourcegroupstaggingapi get-resources --region "$$($(TF) output -raw region)" \

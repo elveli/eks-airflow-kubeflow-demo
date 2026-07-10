@@ -281,7 +281,7 @@ Or with make: `make deploy` then `make pf`.
 | `make kubeconfig` | Point `kubectl` at the cluster | After first apply, or when switching kube contexts |
 | `make kfp` | Install Kubeflow Pipelines standalone + IRSA annotation (idempotent) | After first apply; re-run freely |
 | `make deploy` | `apply` → `kubeconfig` → `kfp`, the whole thing | The one-command full deployment |
-| `make pipeline` | Recompile `pipelines/sklearn_pipeline.yaml` from source (needs Python ≤ 3.12) | Only after editing the KFP pipeline code |
+| `make pipeline` | Recompile `pipelines/sklearn_pipeline.yaml` in a local venv (`pipelines/.venv`, auto-picks a Python ≤ 3.12) | Only after editing the KFP pipeline code |
 | `make pf` | Port-forward both UIs (Airflow :8080, KFP :8081), Ctrl-C to stop | Every demo session |
 | `make stop` | 🔴 Kill switch OFF — node groups to zero, nodes **terminated**, state kept (≈ $2.50/day) | End of a demo day |
 | `make start` | Kill switch ON — fresh nodes, pods reschedule (~5 min) | Start of the next demo day |

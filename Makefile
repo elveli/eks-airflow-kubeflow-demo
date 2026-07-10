@@ -20,8 +20,15 @@ kfp:         ## install Kubeflow Pipelines standalone
 
 deploy: apply kubeconfig kfp  ## full deployment, end to end
 
-pipeline:    ## recompile pipelines/sklearn_pipeline.yaml (needs python <=3.12)
-	cd pipelines && python3 -m pip install -q -r requirements.txt && python3 sklearn_pipeline.py
+# kfp 2.7 supports python <=3.12 only; 'python3' may be newer (and Homebrew's
+# refuses bare 'pip install' anyway, PEP 668) — so compile in a local venv
+# built from the newest usable interpreter on PATH.
+PIPELINE_PY := $(shell command -v python3.12 || command -v python3.11 || command -v python3.10 || command -v python3)
+
+pipeline:    ## recompile pipelines/sklearn_pipeline.yaml in pipelines/.venv (kfp needs python <=3.12)
+	cd pipelines && $(PIPELINE_PY) -m venv .venv \
+	  && .venv/bin/pip install -q -r requirements.txt \
+	  && .venv/bin/python sklearn_pipeline.py
 
 pf:          ## port-forward both UIs (Airflow :8080, KFP :8081)
 	./scripts/port-forward.sh

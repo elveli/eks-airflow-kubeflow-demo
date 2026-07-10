@@ -286,11 +286,14 @@ Or with make: `make deploy` then `make pf`.
 | `make stop` | 🔴 Kill switch OFF — node groups to zero, nodes **terminated**, state kept (≈ $2.50/day) | End of a demo day |
 | `make start` | Kill switch ON — fresh nodes, pods reschedule (~5 min) | Start of the next demo day |
 | `make pods` | `kubectl get pods -A -o wide` — every pod + which node it's on | Quickest health check; compare against ["What a healthy system looks like"](#what-a-healthy-system-looks-like) |
+| `make deployments` | Deployments + StatefulSets rollout state, plus a "still rolling out" list | Watch `make kfp`/`make start` converge — done when the list says none |
+| `make images` | Every container image running, dedup'd with counts | "What software is this exactly?" — versions + registries at a glance |
 | `make s3` | Recursive bucket listing with human sizes + object/size totals | Verify DAG/pipeline outputs landed; storage-cost sanity check |
 | `make dags` | Airflow DAGs (paused state) + each one's 3 most recent runs with durations | Run history without opening the UI |
 | `make git-sync` | Three-way commit check: local vs GitHub vs cluster-synced | "Did my DAG push reach Airflow yet?" |
 | `make workflows` | KFP runs as Argo Workflow objects, oldest first | Pipeline run states without the UI; pairs with `make dags` |
 | `make sidecars` | Pods with >1 container: sidecar + init container names | Decode the READY column; find `-c` targets for logs/exec |
+| `make irsa` | Service accounts annotated with IAM roles — the cluster's AWS-access wiring | K8s-side mirror of `iam`; a missing row means no AWS access |
 | `make iam` | Project IAM roles: trusted principals + policies | AWS-side mirror of `irsa`; verify trust/policy wiring |
 | `make pdbs` | PodDisruptionBudgets + any draining nodes + zero-budget PDBs | Watch `make stop` shutdowns; explains the lingering last node |
 | `make force-drain` | Delete non-DaemonSet pods on cordoned nodes (bypasses PDBs) | When `make pdbs` shows a drain stuck on zero-budget PDBs |

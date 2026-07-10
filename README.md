@@ -735,7 +735,8 @@ nothing ever scales (pipelines stuck at zero, pending pods forever). The
 script now targets the right kube context itself and fails loudly if the
 autoscaler can't be resumed.
 
-**After `on`: if `mysql`/`seaweedfs` stay Pending and KFP crash-loops.** EBS
+**If `mysql`/`seaweedfs` stay Pending and KFP crash-loops — after `on`, or
+mid-session whenever the spot market reclaims and replaces a node.** EBS
 volumes are AZ-bound, and this VPC spans two AZs — if the fresh spot nodes
 all boot in one AZ while a PVC's volume lives in the other, that pod can't
 schedule (`volume node affinity conflict`), and everything downstream of it
@@ -756,6 +757,9 @@ kubectl -n kubeflow delete pvc mysql-pv-claim seaweedfs-pvc   # stranded volumes
 ./scripts/deploy-kfp.sh                                       # idempotent — recreates the PVCs
 kubectl -n kubeflow delete pod -l 'app in (mysql, seaweedfs)'  # reschedule → volumes provision in the nodes' AZ
 ```
+
+If only one volume is stranded (compare AZs with `make volumes`), delete just
+that PVC — e.g. a healthy `seaweedfs` in the surviving AZ keeps its artifacts.
 
 Cost of this route: KFP's *run history* resets (the UI forgets old runs).
 Everything durable — models, metrics, Airflow history — is unaffected.

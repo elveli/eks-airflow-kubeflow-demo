@@ -1,7 +1,7 @@
 # Convenience wrapper — every target is also runnable by hand (see README).
 TF := terraform -chdir=terraform
 
-.PHONY: init plan apply kubeconfig kfp deploy pipeline pf stop start destroy orphans volumes inventory nodegroups pods s3 dags workflows sidecars pdbs force-drain irsa iam git-sync
+.PHONY: init plan apply kubeconfig kfp deploy pipeline pf stop start destroy orphans volumes inventory nodegroups pods deployments images s3 dags workflows sidecars pdbs force-drain irsa iam git-sync
 
 init:        ## terraform init
 	$(TF) init
@@ -52,6 +52,19 @@ inventory:   ## every AWS resource carrying the Terraform default Project tag (C
 
 pods:        ## every pod in the cluster, with the node it runs on (see README: "What a healthy system looks like")
 	kubectl get pods -A -o wide
+
+deployments: ## Deployments + StatefulSets rollout state — watch 'make kfp' / 'make start' converge
+	@kubectl get deploy,sts -A
+	@echo ""
+	@echo "Still rolling out (READY below desired):"
+	@kubectl get deploy,sts -A --no-headers 2>/dev/null \
+	  | awk '{split($$3,r,"/"); if (r[1] != r[2]) print "  " $$1 "  " $$2 "  " $$3}' \
+	  | grep . || echo "  none — everything is fully rolled out"
+
+images:      ## container images actually running, dedup'd with container counts — the stack's live bill of materials
+	@{ echo "CONTAINERS IMAGE"; \
+	kubectl get pods -A -o json | jq -r '.items[].spec | (.containers + (.initContainers // []))[].image' \
+	  | sort | uniq -c | sort -rn | awk '{print $$1 " " $$2}'; } | column -t
 
 s3:          ## everything in the demo bucket (task logs, ETL output, published models) + totals
 	aws s3 ls --recursive --human-readable --summarize \
